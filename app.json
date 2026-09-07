@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "WorkoutPal",
+    "slug": "workout-pal",
+    "scheme": "workoutpal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": false, "bundleIdentifier": "com.utsavmehta.workoutpal" },
+    "android": { "package": "com.utsavmehta.workoutpal", "predictiveBackGestureEnabled": false },
+    "plugins": ["expo-router", "expo-sqlite", "expo-notifications"]
+  }
+}

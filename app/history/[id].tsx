@@ -1,0 +1,13 @@
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable } from 'react-native';
+import { Card, Loading, Screen } from '../../src/components/ui';
+import { getWorkout } from '../../src/data/database';
+import { WorkoutSession } from '../../src/types';
+import { useTheme } from '../../src/theme';
+import { workoutDuration } from '../../src/utils';
+
+export default function HistoryDetail(){const {id}=useLocalSearchParams<{id:string}>();const router=useRouter();const t=useTheme();const [item,setItem]=useState<WorkoutSession|null>(null);useEffect(()=>{if(id)getWorkout(id).then(setItem)},[id]);if(!item)return <Loading/>;return <Screen><View style={styles.header}><Pressable onPress={()=>router.back()}><Ionicons name="chevron-back" size={28} color={t.text}/></Pressable><Text style={[styles.headerTitle,{color:t.text}]}>Workout details</Text><View style={{width:28}}/></View><ScrollView contentContainerStyle={styles.content}><Text style={[styles.title,{color:t.text}]}>{item.name}</Text><Text style={[styles.meta,{color:t.secondary}]}>{new Date(item.endedAt!).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})} · {workoutDuration(item.startedAt,item.endedAt)}</Text>{item.exercises.map(exercise=><Card key={exercise.id} style={styles.card}><Text style={[styles.exerciseName,{color:t.text}]}>{exercise.exerciseName}</Text><View style={styles.columns}><Text style={[styles.setCol,{color:t.secondary}]}>SET</Text>{exercise.exerciseType==='weighted'&&<Text style={[styles.valueCol,{color:t.secondary}]}>WEIGHT</Text>}<Text style={[styles.valueCol,{color:t.secondary}]}>REPS</Text></View>{exercise.sets.map(set=><View key={set.id} style={[styles.row,{borderTopColor:t.border}]}><Text style={[styles.setCol,{color:t.secondary}]}>{set.setNumber}</Text>{exercise.exerciseType==='weighted'&&<Text style={[styles.valueCol,{color:t.text}]}>{set.weight} {set.unit}</Text>}<Text style={[styles.valueCol,{color:t.text}]}>{set.reps}</Text></View>)}</Card>)}</ScrollView></Screen>}
+const styles=StyleSheet.create({header:{height:58,paddingHorizontal:16,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},headerTitle:{fontSize:18,fontWeight:'800'},content:{padding:20,paddingBottom:50},title:{fontSize:30,fontWeight:'900'},meta:{marginTop:7,marginBottom:24},card:{marginBottom:12},exerciseName:{fontSize:18,fontWeight:'800',marginBottom:14},columns:{flexDirection:'row',paddingBottom:6},row:{flexDirection:'row',paddingVertical:12,borderTopWidth:1},setCol:{width:60,fontSize:12,fontWeight:'700'},valueCol:{flex:1,textAlign:'center',fontWeight:'700'}});
