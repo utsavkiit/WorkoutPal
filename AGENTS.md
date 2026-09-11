@@ -2,6 +2,8 @@
 
 WorkoutPal is an iPhone-first, offline-first strength logger. Read `README.md` and `docs/DEVELOPMENT_HANDOFF.md` when setup or operational details are needed.
 
+Use [the Kanban board](docs/KANBAN.md) as the single source of truth for priorities, tasks, acceptance criteria, and handoffs. Read it before feature work and follow the user's scope. One agent works at a time: move tasks between lanes and overwrite the short Handoff with current state, decisions, validation, blockers, and the exact next action before stopping.
+
 ## Architecture
 
 - Expo SDK 54, React Native, TypeScript, Expo Router, and a committed native iOS project.
