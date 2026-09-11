@@ -1,6 +1,6 @@
 insert into public.exercises (id,owner_id,name,muscle_group,equipment,type,is_custom,archived,updated_at)
 select ('00000000-0000-4000-8000-' || lpad(ordinality::text,12,'0'))::uuid, null, name, muscle, equipment, kind, false, false, '2026-01-01T00:00:00Z'
-from jsonb_to_recordset($catalog$[
+from jsonb_array_elements($catalog$[
  {"name":"Barbell Bench Press","muscle":"Chest","equipment":"Barbell","kind":"weighted"},
  {"name":"Incline Barbell Bench Press","muscle":"Chest","equipment":"Barbell","kind":"weighted"},
  {"name":"Dumbbell Bench Press","muscle":"Chest","equipment":"Dumbbell","kind":"weighted"},
@@ -79,5 +79,6 @@ from jsonb_to_recordset($catalog$[
  {"name":"Thruster","muscle":"Full Body","equipment":"Barbell","kind":"weighted"},
  {"name":"Landmine Press","muscle":"Shoulders","equipment":"Barbell","kind":"weighted"},
  {"name":"Hack Squat","muscle":"Quadriceps","equipment":"Machine","kind":"weighted"}
-]$catalog$::jsonb) with ordinality as x(name text,muscle text,equipment text,kind text,ordinality bigint)
+]$catalog$::jsonb) with ordinality as catalog(item, ordinality)
+cross join lateral jsonb_to_record(catalog.item) as x(name text,muscle text,equipment text,kind text)
 on conflict (id) do update set name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,updated_at=excluded.updated_at;

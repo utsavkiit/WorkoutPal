@@ -5,6 +5,7 @@ import { now } from '../utils';
 import { makeId } from './id';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let initializePromise: Promise<void> | null = null;
 
 const database = () => {
   dbPromise ??= SQLite.openDatabaseAsync('workoutpal.db');
@@ -55,7 +56,7 @@ CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
 `;
 
-export async function initializeDatabase() {
+async function initializeDatabaseOnce() {
   const db = await database();
   await db.execAsync(schema);
   const pref = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM preferences');
@@ -68,6 +69,11 @@ export async function initializeDatabase() {
       );
     }
   });
+}
+
+export function initializeDatabase() {
+  initializePromise ??= initializeDatabaseOnce();
+  return initializePromise;
 }
 
 type ExerciseRow = { id: string; owner_id: string | null; name: string; muscle_group: string; equipment: string; type: ExerciseType; is_custom: number; archived: number; updated_at: string };
@@ -149,7 +155,7 @@ export async function createWorkout(routineId: string | null) {
     for (const [exerciseIndex, item] of (routine?.exercises ?? []).entries()) {
       const workoutExerciseId = makeId(); const exercise = item.exercise!;
       await db.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?,?,?,?)', workoutExerciseId, id, exercise.id, exercise.name, exercise.type, exerciseIndex, timestamp);
-      for (let setIndex = 0; setIndex < item.setCount; setIndex++) await db.runAsync('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?,?,?)', makeId(), workoutExerciseId, setIndex + 1, null, null, prefs.unit, null, timestamp);
+      for (let setIndex = 0; setIndex < item.setCount; setIndex++) await db.runAsync('INSERT INTO workout_sets (id, workout_exercise_id, set_number, weight, reps, unit, completed_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', makeId(), workoutExerciseId, setIndex + 1, null, null, prefs.unit, null, timestamp);
     }
   });
   return id;
@@ -188,7 +194,7 @@ export async function addExerciseToWorkout(sessionId: string, exerciseId: string
   const prefs = await getPreferences(); const id = makeId(); const timestamp = now(); const exercise = exerciseFromRow(exerciseRow);
   await db.withTransactionAsync(async () => {
     await db.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?,?,?,?)', id, sessionId, exercise.id, exercise.name, exercise.type, order?.value ?? 0, timestamp);
-    for (let i=1; i<=3; i++) await db.runAsync('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?,?,?)', makeId(), id, i, null, null, prefs.unit, null, timestamp);
+    for (let i=1; i<=3; i++) await db.runAsync('INSERT INTO workout_sets (id, workout_exercise_id, set_number, weight, reps, unit, completed_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', makeId(), id, i, null, null, prefs.unit, null, timestamp);
     await db.runAsync('UPDATE workout_sessions SET updated_at=? WHERE id=?', timestamp, sessionId);
   });
 }
@@ -202,7 +208,7 @@ export async function moveWorkoutExercise(id: string, direction: -1 | 1) {
 
 export async function addSet(workoutExerciseId: string) {
   const db = await database(); const value = await db.getFirstAsync<{ value: number }>('SELECT COALESCE(MAX(set_number),0)+1 AS value FROM workout_sets WHERE workout_exercise_id=?', workoutExerciseId); const prefs = await getPreferences();
-  await db.runAsync('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?,?,?)', makeId(), workoutExerciseId, value?.value ?? 1, null, null, prefs.unit, null, now());
+  await db.runAsync('INSERT INTO workout_sets (id, workout_exercise_id, set_number, weight, reps, unit, completed_at, updated_at) VALUES (?,?,?,?,?,?,?,?)', makeId(), workoutExerciseId, value?.value ?? 1, null, null, prefs.unit, null, now());
 }
 export async function removeSet(id: string) { const db = await database(); await db.runAsync('DELETE FROM workout_sets WHERE id=? AND completed_at IS NULL', id); }
 export async function updateSet(id: string, field: 'weight'|'reps', value: number | null) { const db = await database(); await db.runAsync(`UPDATE workout_sets SET ${field}=?, updated_at=? WHERE id=? AND completed_at IS NULL`, value, now(), id); }
@@ -256,7 +262,7 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
       await db.runAsync('DELETE FROM workout_exercises WHERE session_id=?',w.id);
       for (const e of w.workout_exercises??[]) {
         await db.runAsync('INSERT INTO workout_exercises VALUES (?,?,?,?,?,?,?)',e.id,w.id,e.exercise_id,e.exercise_name,e.exercise_type,e.sort_order,e.updated_at);
-        for (const s of e.workout_sets??[]) await db.runAsync('INSERT INTO workout_sets VALUES (?,?,?,?,?,?,?,?,?)',s.id,e.id,s.set_number,s.weight,s.reps,s.unit,s.completed_at,s.updated_at);
+        for (const s of e.workout_sets??[]) await db.runAsync('INSERT INTO workout_sets (id, workout_exercise_id, set_number, weight, reps, unit, completed_at, updated_at) VALUES (?,?,?,?,?,?,?,?)',s.id,e.id,s.set_number,s.weight,s.reps,s.unit,s.completed_at,s.updated_at);
       }
     }
     if (bundle.preference) {

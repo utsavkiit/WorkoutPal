@@ -12,6 +12,7 @@ export const supabase = isSupabaseConfigured ? createClient(url!, key!, {
 }) : null;
 
 export const magicLinkRedirect = Linking.createURL('auth/callback');
+console.log('[debug] magicLinkRedirect =', JSON.stringify(magicLinkRedirect));
 
 export async function sendMagicLink(email: string) {
   if (!supabase) throw new Error('Add Supabase credentials to .env first.');

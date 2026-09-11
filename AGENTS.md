@@ -45,29 +45,34 @@ Important implementation paths:
 ## Setup and external state
 
 - The app runs in local-only mode without credentials.
-- Supabase and Expo accounts have not been connected in this workspace.
+- Supabase project `aafxbjevyxrpgyxikxrg` is linked. The ignored `.env` contains its URL and publishable client key.
 - No `.env` is committed. Copy `.env.example` and provide only the Supabase project URL and publishable key.
-- Configure `workoutpal://auth/callback` as an allowed Supabase redirect URL.
-- Apply both Supabase SQL files before testing sync.
-- The provisional bundle ID is `com.utsavmehta.workoutpal` and should be confirmed before App Store registration.
+- `workoutpal://auth/callback` is configured as an allowed Supabase redirect URL.
+- The migration and seed have been applied to the linked project.
+- Bundle ID: `com.utsavmehta.workoutpal`. Apple team: `N6Y7G2993R`.
+- The app uses Expo SDK 54, React Native 0.81.5, and a locally generated iOS project because Xcode 16.4 cannot build the former SDK 57/Swift 6.2 dependency set.
+- Local development uses an Xcode-signed development build on a physical iPhone. Expo Go and EAS are not required for this workflow.
+- Open `ios/WorkoutPal.xcworkspace`, never the `.xcodeproj`, when working in Xcode.
+- CocoaPods and Xcode commands must run with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`. The Podfile also pins these values for pod targets to avoid a macOS `C.UTF-8` Perl locale crash.
+- The Supabase CLI is available through `npx supabase`; its login is machine-local and is not committed. Use `npx supabase login --agent no` in Codex terminals when interactive login is needed.
 - No TestFlight or App Store build has been submitted.
 
 ## Verification completed
 
-The following passed on September 6, 2026:
+The following passed on September 10, 2026:
 
 - `npm run typecheck`
 - `npm test` (4 domain tests)
-- `npx expo install --check`
 - `npx expo export --platform ios`
-- Independent execution of the SQLite DDL using the system `sqlite3` binary
-- App icon verification: 1024×1024 PNG without alpha
+- Signed Xcode Debug build, installation, and launch on an iPhone 14 running iOS 18.7.8
+- Metro development-client bundle over the local Wi-Fi network
+- Email magic-link authentication and restored native session
+- Authenticated Supabase push and pull with RLS enabled
+- Transaction-only two-user Supabase RLS checks and a clean security advisor result
 
-Not yet verified because external accounts/full Xcode were unavailable:
+Not yet verified:
 
-- Supabase migration execution and two-user RLS tests
-- Magic-link round trip against a live project
-- Physical iPhone airplane-mode, notification, background, and accessibility testing
+- Physical iPhone airplane-mode, notification, extended background, and accessibility testing
 - EAS preview build and TestFlight submission
 - Component and end-to-end UI automation
 
@@ -82,3 +87,5 @@ Not yet verified because external accounts/full Xcode were unavailable:
 - Enable and validate RLS before treating any cloud integration as complete.
 - Run type-checking, unit tests, and an iOS export after material changes.
 - Prefer large touch targets and minimal prompts in active-workout flows.
+- Never commit `.env`, Supabase access tokens, database passwords, Apple certificates, provisioning profiles, Pods, DerivedData, or `.xcode.env.local`.
+- Read `docs/DEVELOPMENT_HANDOFF.md` for exact local build, install, Metro, and Supabase commands before changing native dependencies.

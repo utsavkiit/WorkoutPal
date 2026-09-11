@@ -7,8 +7,30 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "ios": { "supportsTablet": false, "bundleIdentifier": "com.utsavmehta.workoutpal" },
-    "android": { "package": "com.utsavmehta.workoutpal", "predictiveBackGestureEnabled": false },
-    "plugins": ["expo-router", "expo-sqlite", "expo-notifications"]
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.utsavmehta.workoutpal",
+      "appleTeamId": "N6Y7G2993R",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.utsavmehta.workoutpal",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-notifications",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e9aade4a-eea3-4699-bac4-07f0a9ddbd85"
+      }
+    },
+    "owner": "utsavkiit"
   }
 }

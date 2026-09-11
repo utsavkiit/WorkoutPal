@@ -5,6 +5,11 @@ import { supabase } from './supabase';
 import { Routine, WorkoutSession } from '../types';
 
 const exerciseRow = (e: any, ownerId: string) => ({ id: e.id, owner_id: ownerId, name: e.name, muscle_group: e.muscleGroup, equipment: e.equipment, type: e.type, is_custom: true, archived: false, updated_at: e.updated_at });
+const errorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  try { return JSON.stringify(error); } catch { return String(error); }
+};
 
 export async function pushPending(session: Session) {
   if (!supabase) return 'offline' as const;
@@ -42,7 +47,9 @@ export async function pushPending(session: Session) {
       await completeOutbox(item.id);
     } catch (error) {
       failed = true;
-      await failOutbox(item.id, error instanceof Error ? error.message : String(error));
+      const message = errorMessage(error);
+      console.error(`[sync] ${item.entity} ${item.operation} failed:`, message);
+      await failOutbox(item.id, message);
     }
   }
   if (!failed) {
@@ -53,8 +60,17 @@ export async function pushPending(session: Session) {
       supabase.from('user_preferences').select('*').eq('user_id',session.user.id).maybeSingle(),
     ]);
     const pullError=exercises.error??routines.error??workouts.error??preference.error;
-    if (pullError) failed=true;
-    else await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data});
+    if (pullError) {
+      failed=true;
+      console.error('[sync] pull failed:', pullError.message);
+    } else {
+      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data});
+      console.info('[sync] Supabase push and pull completed', {
+        workouts: workouts.data?.length ?? 0,
+        workoutExercises: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises?.length ?? 0), 0),
+        workoutSets: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises ?? []).reduce((exerciseTotal: number, exercise: any) => exerciseTotal + (exercise.workout_sets?.length ?? 0), 0), 0),
+      });
+    }
   }
   return failed ? 'error' as const : 'idle' as const;
 }
