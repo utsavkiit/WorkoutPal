@@ -1,0 +1,38 @@
+{
+  "_comment": "Maps Strong-app CSV 'Exercise Name' values to WorkoutPal exercises. 'seed' entries reuse an existing seeded exercise (id is stable across local SQLite and Supabase, see src/data/exercises.ts). 'custom' entries had no faithful seed match and get created as a custom exercise owned by the importing user. Extend this file (don't overwrite) whenever build_import.py reports an unmapped name — the script will print the exact JSON snippet to add.",
+  "seed": {
+    "Bench Press (Barbell)": "Barbell Bench Press",
+    "Bench Press (Dumbbell)": "Dumbbell Bench Press",
+    "Bent Over Row (Barbell)": "Barbell Row",
+    "Bicep Curl (Barbell)": "Barbell Curl",
+    "Bicep Curl (Dumbbell)": "Dumbbell Curl",
+    "Bulgarian Split Squat": "Bulgarian Split Squat",
+    "Cable Crunch": "Cable Crunch",
+    "Deadlift (Barbell)": "Deadlift",
+    "Face Pull (Cable)": "Face Pull",
+    "Goblet Squat (Kettlebell)": "Kettlebell Goblet Squat",
+    "Incline Bench Press (Dumbbell)": "Incline Dumbbell Press",
+    "Lat Pulldown (Cable)": "Lat Pulldown",
+    "Lateral Raise (Dumbbell)": "Lateral Raise",
+    "Leg Extension (Machine)": "Leg Extension",
+    "Leg Press": "Leg Press",
+    "Overhead Press (Dumbbell)": "Dumbbell Shoulder Press",
+    "Pec Deck (Machine)": "Chest Fly",
+    "Plank": "Plank",
+    "Romanian Deadlift (Barbell)": "Romanian Deadlift",
+    "Seated Calf Raise (Machine)": "Calf Raise",
+    "Seated Leg Curl (Machine)": "Leg Curl",
+    "Seated Leg Press (Machine)": "Leg Press",
+    "Seated Row (Cable)": "Seated Cable Row",
+    "Squat (Barbell)": "Back Squat",
+    "Triceps Pushdown (Cable - Straight Bar)": "Triceps Pushdown"
+  },
+  "custom": {
+    "Bench Press - Close Grip (Dumbell)": { "name": "Close-Grip Bench Press (Dumbbell)", "muscleGroup": "Triceps", "equipment": "Dumbbell", "type": "weighted" },
+    "Bent Over One Arm Row (Dumbbell)": { "name": "Bent Over One Arm Row (Dumbbell)", "muscleGroup": "Back", "equipment": "Dumbbell", "type": "weighted" },
+    "Hanging Knee Raise": { "name": "Hanging Knee Raise", "muscleGroup": "Core", "equipment": "Bodyweight", "type": "bodyweight" },
+    "Incline Curl (Dumbbell)": { "name": "Incline Curl (Dumbbell)", "muscleGroup": "Biceps", "equipment": "Dumbbell", "type": "weighted" },
+    "Romanian Deadlift (Dumbbell)": { "name": "Romanian Deadlift (Dumbbell)", "muscleGroup": "Hamstrings", "equipment": "Dumbbell", "type": "weighted" },
+    "Squat (Smith Machine)": { "name": "Squat (Smith Machine)", "muscleGroup": "Quadriceps", "equipment": "Machine", "type": "weighted" }
+  }
+}
