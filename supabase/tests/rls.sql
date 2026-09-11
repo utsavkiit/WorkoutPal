@@ -8,6 +8,9 @@ insert into public.workout_sessions(id,owner_id,name,status,started_at,updated_a
 insert into public.workout_exercises(id,session_id,exercise_id,exercise_name,exercise_type,sort_order,updated_at) select id,id,id,'RLS fixture','bodyweight',0,now() from public.routines where name='RLS fixture';
 insert into public.workout_sets(id,workout_exercise_id,set_number,reps,unit,updated_at) select id,id,1,10,'lb',now() from public.routines where name='RLS fixture';
 insert into public.user_preferences(user_id,unit,rest_seconds,updated_at) values ('10000000-0000-4000-8000-000000000001','lb',90,now()),('10000000-0000-4000-8000-000000000002','kg',90,now());
+insert into public.workout_sessions(id,owner_id,name,status,started_at,ended_at,updated_at) values
+  ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','RLS fixture completed','completed',now(),now(),now()),
+  ('30000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','RLS fixture completed','completed',now(),now(),now());
 set local role authenticated;
 do $test$
 declare n integer; t text; own_id uuid; other_id uuid; own_user uuid; other_user uuid; c integer;
@@ -52,6 +55,22 @@ for n in 1..2 loop
  if c<>78 then raise exception 'Catalog count mismatch: %',c; end if;
 end loop;
 end $test$;
+
+-- A completed workout is deletable by its owner (widened from active-only) but not by another owner.
+do $test_completed_delete$
+declare mine uuid := '30000000-0000-4000-8000-000000000001'; theirs uuid := '30000000-0000-4000-8000-000000000002';
+  owner1 uuid := '10000000-0000-4000-8000-000000000001'; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  delete from public.workout_sessions where id=theirs;
+  get diagnostics c = row_count;
+  if c<>0 then raise exception 'Other completed workout delete allowed'; end if;
+  delete from public.workout_sessions where id=mine;
+  get diagnostics c = row_count;
+  if c<>1 then raise exception 'Own completed workout delete blocked'; end if;
+end $test_completed_delete$;
+
 reset role;
 rollback;
-select 'PASS: two-user RLS read/update/delete isolation, ownership reassignment and cross-owner child insert checks; fixtures rolled back' as result;
+select 'PASS: two-user RLS read/update/delete isolation, ownership reassignment, cross-owner child insert, and completed-workout delete checks; fixtures rolled back' as result;

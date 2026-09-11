@@ -1,6 +1,6 @@
 # WorkoutPal Kanban
 
-Updated: September 10, 2026. Single-agent queue; no implementation started. Baseline review was code-only, not device-tested.
+Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone this session; on-device results are still pending from the user.
 
 ## Workflow
 
@@ -12,17 +12,17 @@ Updated: September 10, 2026. Single-agent queue; no implementation started. Base
 
 ## Handoff
 
-- Current: None. All tasks unstarted.
-- Next: WP-001 unless the user selects another task; inspect `src/data/database.ts` and `app/workout.tsx`.
-- Changes/decisions: Documentation only. Suggested next release: copy values, exercise progress, edit/reuse history.
-- Validation/blockers: No runtime checks performed; no known blocker. QA tasks describe unverified behavior, not confirmed defects.
+- Current: None. WP-031's Supabase CLI blocker cleared this session (see below); [AI_COACHING_PRD.md](AI_COACHING_PRD.md) remains a draft only, no implementation authorized, WP-032 remains in Backlog for refinement.
+- Decisions: Versioned agent guide exposed through database briefing; WorkoutPal data is the baseline, with authorized session-available external context as optional enrichment. Reviews disclose sources/coverage; reusable external preferences require user confirmation. Existing Supabase MCP, offline UI, and user-approved routine proposals remain the direction. Access boundaries, scheduling, and external-source availability remain open. Operational note for future Supabase changes: `npx supabase migration list --linked` shows both 001 and 002 as unapplied remotely, but 001's schema is already live (it was applied out-of-band, not through tracked `db push`) — running `supabase db push` as-is would replay 001's `create table` statements and fail. Apply new SQL via `npx supabase db query --linked --file <path>` instead (same mechanism already used for `supabase/tests/rls.sql`), or repair the migration ledger first if switching to `db push`.
+- Validation: WP-031 — `npx supabase login` succeeded (the CLI had no stored token, and `projects list` without `--debug` hung rather than failing fast; `--debug` showed it actually was authenticated). Applied `supabase/migrations/002_delete_completed_workouts.sql` via `db query --file`, then fixed a bug in my own `supabase/tests/rls.sql` addition (it inserted rows for two different owners after the session had already switched to the `authenticated` role/JWT for one owner, which RLS correctly rejected; moved that fixture insert before `set local role authenticated`) and confirmed `db query --file supabase/tests/rls.sql` now prints PASS, including the completed-workout delete check. AI coaching draft: documentation and relative links reviewed, no runtime changes or tests needed.
+- Existing blockers: None. WP-009, WP-010, and WP-031 are all implemented and now sit in Verify awaiting the on-device checks listed there (WP-031's remote delete path is confirmed server-side via the RLS test, but not yet exercised from the app on the phone).
+- Exact next action: Reopen the AI coaching draft's "Decisions to revisit before implementation" with the user when returning to that thread; do not build it yet. Otherwise the next Ready task remains WP-001; inspect `src/data/database.ts` and `app/workout.tsx`.
 
 ## Ready
 
 - **WP-001 Copy history:** Look up the latest completed session containing an exercise; return its sets in order without mixing sessions. Handle no history and unequal set counts.
 - **WP-003 Copy preceding set:** New sets inherit available weight/reps from the preceding set, remain incomplete, and preserve bodyweight behavior.
 - **WP-005 Exercise records:** Calculate local history, heaviest weight, reps at a given weight, and bodyweight rep records. Normalize units, exclude incomplete sets, distinguish ties/new records, and reflect history corrections.
-- **WP-009 Edit history data:** Validate completed weight/reps, name, and date edits; persist offline, enqueue changes, and preserve corrections through remote merge.
 - **WP-011 Reuse history:** Repeat with fresh IDs and incomplete sets, preserving the original and respecting an existing active workout. Save exercise order/set counts as a named routine.
 
 ## In progress
@@ -31,7 +31,9 @@ None.
 
 ## Verify
 
-None.
+- **WP-009 Edit history data:** Validate completed weight/reps, name, and date edits; persist offline, enqueue changes, and preserve corrections through remote merge. Implemented via `saveHistoryEdits`; typecheck/tests/export pass. Needs on-device check: edit while offline, restart app, confirm correction persists and later syncs/merges without reverting.
+- **WP-010 Edit history UI:** Clear save/cancel and input validation; after WP-009. Implemented in `app/history/[id].tsx`. Needs on-device check: VoiceOver/large-text pass on the new inputs, and that Cancel truly discards in-progress edits.
+- **WP-031 Delete history:** Delete a whole completed workout, a single exercise from a past workout, or a single completed set, with the deletion persisting through sync (not just locally). Guards against leaving a workout with zero exercises or an exercise with zero sets — delete the parent instead. Implemented (`deleteWorkout`/`deleteHistoryExercise`/`deleteHistorySet` in `src/data/database.ts`, remote delete handling in `src/data/sync.ts`, trash-icon UI in `app/history/[id].tsx`). `supabase/migrations/002_delete_completed_workouts.sql` is now applied to the linked project and `supabase/tests/rls.sql` passes (confirms an owner can delete their own completed workout and not another owner's). Needs on-device check: delete a set/exercise/workout while offline, confirm it stays deleted after restart and after the next sync (no resurrection via pull), and that the "only exercise"/"only set" guard alerts fire correctly.
 
 ## Blocked
 
@@ -46,7 +48,6 @@ Ordered by feature priority; dependencies constrain eligibility.
 - **WP-006 Exercise detail:** Dated sets, defined record values, simple trend chart, and first-workout/empty states; reachable from workout/history; after WP-005.
 - **WP-007 Record feedback:** Noninterrupting new-record indication or post-workout summary; after WP-005.
 - **WP-008 Progress QA:** Mixed units, ties, first sessions, corrected history, and iPhone chart readability; after WP-006, WP-007; recheck after WP-012. If estimated 1RM is later added, label the estimate and document formula/valid inputs.
-- **WP-010 Edit history UI:** Clear save/cancel and input validation; after WP-009.
 - **WP-012 History QA:** Corrections/reuse work offline, after restart/sync; originals remain intact and previous values reflect edits; after WP-010, WP-011.
 - **WP-013 Routine target design:** Optional rep ranges, weight targets, and exercise rest durations; define precedence over copied history.
 - **WP-014 Target storage:** Compatible local/remote persistence and sync with defaults preserving existing routines; after WP-013.
@@ -66,6 +67,7 @@ Ordered by feature priority; dependencies constrain eligibility.
 - **WP-028 Superset UI:** Grouping controls and alternating-set flow; preserve ordinary workouts; after WP-027.
 - **WP-029 Substitution:** Session-only replacement preserves position and logged performance, uses replacement history, and makes saved-routine changes explicit. Independently deliverable from supersets.
 - **WP-030 Group/substitution QA:** Offline, restart, repeat, and sync; after WP-028, WP-029.
+- **WP-032 AI coaching concept:** Refine [draft PRD](AI_COACHING_PRD.md) with the user; resolve agent access, scheduling, context/output contract, and proposal acceptance before creating implementation tasks. Idea only; not approved to build.
 - **QA-001:** Physical-iPhone offline logging, reconnect, and sync.
 - **QA-002:** Active-workout recovery and timer across backgrounding/restart.
 - **QA-003:** Larger text, VoiceOver, touch targets, and keyboard in active workouts.

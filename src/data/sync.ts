@@ -34,6 +34,12 @@ export async function pushPending(session: Session) {
           const result = await supabase.from('routine_exercises').insert(routine.exercises.map((e) => ({ id: e.id, routine_id: routine.id, exercise_id: e.exerciseId, sort_order: e.sortOrder, set_count: e.setCount, updated_at: routine.updatedAt })));
           if (result.error) throw result.error;
         }
+      } else if (item.entity === 'workout' && item.operation === 'delete') {
+        const { error } = await supabase.from('workout_sessions').delete().eq('id', item.entity_id).eq('owner_id', session.user.id); if (error) throw error;
+      } else if (item.entity === 'workout_exercise' && item.operation === 'delete') {
+        const { error } = await supabase.from('workout_exercises').delete().eq('id', item.entity_id); if (error) throw error;
+      } else if (item.entity === 'workout_set' && item.operation === 'delete') {
+        const { error } = await supabase.from('workout_sets').delete().eq('id', item.entity_id); if (error) throw error;
       } else if (item.entity === 'workout') {
         const workout = payload as WorkoutSession;
         const result = await supabase.from('workout_sessions').upsert({ id: workout.id, owner_id: session.user.id, routine_id: workout.routineId, name: workout.name, status: workout.status, started_at: workout.startedAt, ended_at: workout.endedAt, updated_at: workout.updatedAt }); if (result.error) throw result.error;

@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { SEEDED_EXERCISES } from './exercises';
 import { Exercise, ExerciseType, Routine, RoutineExercise, UserPreferences, WeightUnit, WorkoutExercise, WorkoutSession, WorkoutSet } from '../types';
+import { canCompleteSet } from '../domain';
 import { now } from '../utils';
 import { makeId } from './id';
 
@@ -227,6 +228,76 @@ export async function finishWorkout(id: string) {
   await enqueueWorkout(id);
 }
 export async function discardWorkout(id: string) { const db = await database(); await db.runAsync("DELETE FROM workout_sessions WHERE id=? AND status='active'", id); }
+
+// Corrects a completed workout's name, date, and completed sets in one atomic transaction,
+// then re-enqueues a single full snapshot so the correction survives push/pull and remote merge.
+export async function saveHistoryEdits(id: string, input: { name: string; startedAt: string; endedAt: string; sets: { id: string; weight: number | null; reps: number }[] }) {
+  const trimmedName = input.name.trim();
+  if (!trimmedName) throw new Error('Name is required.');
+  if (new Date(input.endedAt).getTime() < new Date(input.startedAt).getTime()) throw new Error('End date cannot be before start date.');
+  const db = await database();
+  const rows = await db.getAllAsync<{ id: string; exercise_type: ExerciseType }>(
+    `SELECT ws.id, we.exercise_type FROM workout_sets ws JOIN workout_exercises we ON we.id = ws.workout_exercise_id WHERE we.session_id = ? AND ws.completed_at IS NOT NULL`, id,
+  );
+  const typeById = new Map(rows.map((r) => [r.id, r.exercise_type]));
+  for (const set of input.sets) {
+    const type = typeById.get(set.id);
+    if (!type) throw new Error('Set not found.');
+    if (!canCompleteSet(type, set.weight, set.reps)) throw new Error(type === 'weighted' ? 'Enter weight and reps for every set.' : 'Enter reps for every set.');
+  }
+  const timestamp = now();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE workout_sessions SET name=?, started_at=?, ended_at=?, updated_at=? WHERE id=?', trimmedName, input.startedAt, input.endedAt, timestamp, id);
+    for (const set of input.sets) await db.runAsync('UPDATE workout_sets SET weight=?, reps=?, updated_at=? WHERE id=?', set.weight, set.reps, timestamp, set.id);
+  });
+  await enqueueWorkout(id);
+}
+
+// Permanently removes a completed workout. Local cascade (FK ON DELETE CASCADE) drops its
+// exercises/sets; the outbox 'delete' entry tells the remote side to do the same.
+export async function deleteWorkout(id: string) {
+  const db = await database();
+  const timestamp = now();
+  await db.runAsync('DELETE FROM workout_sessions WHERE id=?', id);
+  await enqueue('workout', id, 'delete', { id, updated_at: timestamp });
+}
+
+// Removes one exercise (and its sets) from a completed workout's history. Refuses to remove
+// the workout's only exercise — use deleteWorkout for that. Enqueues an explicit remote delete
+// for the exercise (upsert alone can't remove a row) plus a refreshed session snapshot.
+export async function deleteHistoryExercise(workoutExerciseId: string) {
+  const db = await database();
+  const row = await db.getFirstAsync<{ session_id: string }>('SELECT session_id FROM workout_exercises WHERE id=?', workoutExerciseId);
+  if (!row) return;
+  const count = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM workout_exercises WHERE session_id=?', row.session_id);
+  if ((count?.count ?? 0) <= 1) throw new Error('Delete the whole workout instead of its only exercise.');
+  const timestamp = now();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM workout_exercises WHERE id=?', workoutExerciseId);
+    await db.runAsync('UPDATE workout_sessions SET updated_at=? WHERE id=?', timestamp, row.session_id);
+  });
+  await enqueue('workout_exercise', workoutExerciseId, 'delete', { id: workoutExerciseId, session_id: row.session_id, updated_at: timestamp });
+  await enqueueWorkout(row.session_id);
+}
+
+// Removes one completed set from history. Refuses to remove an exercise's only completed set —
+// use deleteHistoryExercise for that.
+export async function deleteHistorySet(setId: string) {
+  const db = await database();
+  const set = await db.getFirstAsync<{ workout_exercise_id: string }>('SELECT workout_exercise_id FROM workout_sets WHERE id=? AND completed_at IS NOT NULL', setId);
+  if (!set) return;
+  const exercise = await db.getFirstAsync<{ session_id: string }>('SELECT session_id FROM workout_exercises WHERE id=?', set.workout_exercise_id);
+  if (!exercise) return;
+  const count = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM workout_sets WHERE workout_exercise_id=? AND completed_at IS NOT NULL', set.workout_exercise_id);
+  if ((count?.count ?? 0) <= 1) throw new Error('Delete the whole exercise instead of its only set.');
+  const timestamp = now();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM workout_sets WHERE id=?', setId);
+    await db.runAsync('UPDATE workout_sessions SET updated_at=? WHERE id=?', timestamp, exercise.session_id);
+  });
+  await enqueue('workout_set', setId, 'delete', { id: setId, updated_at: timestamp });
+  await enqueueWorkout(exercise.session_id);
+}
 
 export type OutboxRow = { id: string; entity: string; entity_id: string; operation: string; payload: string; attempts: number };
 export async function enqueue(entity: string, entityId: string, operation: string, payload: unknown) { const db = await database(); await db.runAsync('DELETE FROM outbox WHERE entity=? AND entity_id=?', entity, entityId); await db.runAsync('INSERT INTO outbox VALUES (?,?,?,?,?,?,0,NULL)', makeId(), entity, entityId, operation, JSON.stringify(payload), now()); }
