@@ -15,16 +15,16 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-002 is complete and ready to commit. AIC-003 goal model design is the exact next task. AIC-001 was committed and pushed as `0d62b75`. Branch `feature/ai-coach` was created from `main` at `7221ea4` while uncommitted QA-004 work and earlier AI PRD edits were already present. They were preserved; future commits must separate AI Coach files from unrelated QA-004 changes.
-- Changes: Added five versioned synthetic journey fixtures and expected reviews in `src/coaching/fixtures.ts`, with tests that validate every review against contract v1 and ensure all evidence IDs exist in the supplied context. Added `docs/AI_COACH_REVIEW_EVALUATION.md` with a proposed minimum-data rule, 12-point manual quality rubric, critical-failure rules, and sequential-review repetition check. No external model has been run, so these fixtures establish intended shape/tone rather than model quality.
-- Decisions: Deliver a trustworthy read-only weekly review before routine proposals. Model output never owns a user ID and is never executable data. A trusted publisher binds ownership and validates the whole payload. Continuity check-ins are first-class output when weekly data is insufficient.
-- Validation: `npm run typecheck` passes; `npm test` passes 20/20 (13 coaching contract/fixture and 7 existing domain tests); `git diff --check` passes. AIC-001's iOS export remains the latest export and passed.
-- Blockers: None for AIC-003. Database access design remains intentionally deferred until the review contract is evaluated and a safe external-agent publishing path is chosen.
-- Exact next action: Start AIC-003. Freeze initial goal types, priority, target/date semantics, training constraints/preferences, coaching consent, and conflict/correction rules without adding persistence yet.
+- Current: AIC-003 is complete and ready to commit. AIC-004 local goal persistence is the exact next task. AIC-001 and AIC-002 are pushed as `0d62b75` and `aa3be0c`. Branch `feature/ai-coach` was created from `main` at `7221ea4` while uncommitted QA-004 work and earlier AI PRD edits were already present. They were preserved; future commits must separate AI Coach files from unrelated QA-004 changes.
+- Changes: Added the versioned goal/profile model and validator in `src/coaching/goals.ts`, tests in `src/coaching/goals.test.ts`, and durable semantics in `docs/AI_COACH_GOAL_MODEL.md`. V1 supports one primary plus two ranked secondary goals, directional or numeric lift goals, hypertrophy/consistency/maintenance goals, constraints, preferences, weekly schedule, explicit workout-history consent, inactive goal history, and revision metadata. No persistence or cloud access was added.
+- Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
+- Validation: `npm run typecheck` passes; `npm test` passes 27/27 (20 coaching and 7 existing domain tests); `git diff --check` passes. AIC-001's iOS export remains the latest export and passed.
+- Blockers: None for AIC-004 local persistence. Remote migration work remains deferred to AIC-005 and must not proceed until the migration-ledger mismatch is resolved.
+- Exact next action: Implement AIC-004 local-first SQLite profile revision storage, client-generated IDs, repository APIs, and durable outbox entries. Keep it independent of sign-in/network and do not add remote schema changes.
 
 ## Ready
 
-- **AIC-003 Goal model design:** Freeze initial goal types, priority, target/date semantics, constraints, preferences, and coaching consent. Specify conflict and correction rules.
+- **AIC-004 Goal persistence:** Implement local-first SQLite goal/check-in storage, client-generated IDs, upgrades, repository APIs, and outbox entries; after AIC-003.
 
 ## In progress
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-004 Goal persistence:** Implement local-first SQLite goal/check-in storage, client-generated IDs, upgrades, repository APIs, and outbox entries; after AIC-003.
 - **AIC-005 Goal cloud sync:** Add Supabase migration with explicit grants, RLS ownership policies, sync/merge behavior, and two-user RLS tests; after AIC-004. Do not apply remotely until the migration ledger mismatch in the global handoff is resolved.
 - **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004.
 - **AIC-007 Weekly metrics:** Deterministically calculate timezone-correct review periods, completed sessions, working-set evidence, unit-normalized comparisons, data coverage, and latest included workout. Handle corrections/deletions and sparse weeks; coordinate with WP-005 and WP-024.
@@ -60,6 +59,7 @@ None.
 
 - **AIC-001 Review contract v1:** Added provider-neutral output types, whole-payload validation, generation binding, evidence rules, continuity check-ins, invalid cases, and durable agent guidance. Evidence: typecheck, 14/14 tests, iOS export, and diff check pass on September 12, 2026.
 - **AIC-002 Representative review fixtures:** Added five synthetic input/output journeys, executable contract/evidence-reference checks, minimum-data guidance, and a quality/repetition rubric. Evidence: typecheck, 20/20 tests, and diff check pass on September 12, 2026; no external model run claimed.
+- **AIC-003 Goal model design:** Added validated v1 goal/profile types, ranked-goal semantics, constraints/preferences, weekly scheduling and consent rules, revision/correction guidance, and 7 goal-model tests. Evidence: typecheck, 27/27 tests, and diff check pass on September 12, 2026.
 
 ## Validation expectations
 
@@ -72,6 +72,7 @@ None.
 
 - AIC-001 files: `src/coaching/contracts.ts`, `src/coaching/contracts.test.ts`, `docs/COACHING_AGENT_GUIDE.md`, and this feature board.
 - AIC-002 files: `src/coaching/fixtures.ts`, `src/coaching/fixtures.test.ts`, and `docs/AI_COACH_REVIEW_EVALUATION.md`.
+- AIC-003 files: `src/coaching/goals.ts`, `src/coaching/goals.test.ts`, and `docs/AI_COACH_GOAL_MODEL.md`.
 - Shared files intentionally touched by AIC-001: the `test` script only in `package.json`, plus WP-032 handoff/lane text in `docs/KANBAN.md`.
 - Earlier AI discovery work: `docs/AI_COACHING_PRD.md`.
 - Pre-existing QA-004 work that must remain separate: `.gitignore`, `README.md`, `.detoxrc.js`, `e2e/`, `scripts/`, Detox/Jest dependency changes in `package.json` and `package-lock.json`, and selector edits in `app/(tabs)/index.tsx`, `app/workout.tsx`, and `src/components/ExercisePicker.tsx`.
