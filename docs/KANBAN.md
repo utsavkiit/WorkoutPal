@@ -12,10 +12,10 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032 implementation has started on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 review contract v1 is complete and AIC-002 representative fixtures is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
-- Changes: Added a review-only, versioned external-agent output contract, strict whole-payload validation tests, and [COACHING_AGENT_GUIDE.md](COACHING_AGENT_GUIDE.md). The contract requires evidence-backed claims and WorkoutPal baseline context, supports sparse-week continuity check-ins, binds output to the requested generation context, rejects unsupported ownership/routine fields, and excludes persistence and routine mutation. Updated the npm test glob so both root and nested suites run. Existing unrelated working-tree changes were preserved.
-- Validation: AIC-001 passes `npm run typecheck`, `npm test` (14/14), `npx expo export --platform ios`, and `git diff --check`. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
-- Exact next action: Build and evaluate the five AIC-002 representative weekly-review fixtures following the feature board. Do not begin database access or routine proposals until their preceding feature tasks and security boundaries are complete.
+- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 is pushed as `0d62b75`, AIC-002 representative fixtures is complete and ready to commit, and AIC-003 goal model design is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
+- Changes: Added five synthetic weekly-review journeys covering steady progress, apparent plateau, inconsistent weeks, return after a break, and tighter time constraints. Each has a contract-valid expected review and evidence-ID checks. Added a manual quality rubric, minimum-data proposal, critical-failure conditions, and repetition evaluation. Existing unrelated working-tree changes remain preserved.
+- Validation: AIC-002 passes `npm run typecheck`, `npm test` (20/20), and `git diff --check`; no external model run is claimed. AIC-001's iOS export passed. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
+- Exact next action: Define AIC-003 goal semantics following the feature board. Do not begin persistence, database access, or routine proposals until their preceding feature tasks and security boundaries are complete.
 - Prior context: WP-009/WP-010/WP-031 remain in Verify; migration 002 is applied and RLS tests passed previously. Remote migration ledger lists 001/002 as unapplied despite live schema; do not blindly `db push` without repairing ledger. Next feature priority remains WP-001 when product discovery is paused.
 
 ## Ready
@@ -27,7 +27,7 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## In progress
 
-- **WP-032 AI coaching:** Build the external-agent-driven weekly review and later user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-002 is next.
+- **WP-032 AI coaching:** Build the external-agent-driven weekly review and later user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-003 is next.
 
 ## Verify
 

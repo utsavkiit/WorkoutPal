@@ -15,16 +15,15 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-001 is complete. AIC-002 representative review fixtures is the exact next task. Branch `feature/ai-coach` was created from `main` at `7221ea4` while uncommitted QA-004 work and earlier AI PRD edits were already present. They were preserved; future commits must separate AI Coach files from unrelated QA-004 changes.
-- Changes: Added the contract-v1 TypeScript model and strict whole-payload validator in `src/coaching/contracts.ts`, contract tests in `src/coaching/contracts.test.ts`, and the durable external-agent guide in `docs/COACHING_AGENT_GUIDE.md`. Contract v1 is review-only; it rejects unsupported versions, unexpected ownership/routine fields, missing WorkoutPal baseline context, ungrounded claims, malformed dates/content, duplicates, and output that does not match the requested generation context. Updated the npm test command so root and nested test suites both run instead of the shell silently selecting only one level.
+- Current: AIC-002 is complete and ready to commit. AIC-003 goal model design is the exact next task. AIC-001 was committed and pushed as `0d62b75`. Branch `feature/ai-coach` was created from `main` at `7221ea4` while uncommitted QA-004 work and earlier AI PRD edits were already present. They were preserved; future commits must separate AI Coach files from unrelated QA-004 changes.
+- Changes: Added five versioned synthetic journey fixtures and expected reviews in `src/coaching/fixtures.ts`, with tests that validate every review against contract v1 and ensure all evidence IDs exist in the supplied context. Added `docs/AI_COACH_REVIEW_EVALUATION.md` with a proposed minimum-data rule, 12-point manual quality rubric, critical-failure rules, and sequential-review repetition check. No external model has been run, so these fixtures establish intended shape/tone rather than model quality.
 - Decisions: Deliver a trustworthy read-only weekly review before routine proposals. Model output never owns a user ID and is never executable data. A trusted publisher binds ownership and validates the whole payload. Continuity check-ins are first-class output when weekly data is insufficient.
-- Validation: `npm run typecheck` passes; `npm test` passes 14/14 (7 coaching contract and 7 existing domain tests); `npx expo export --platform ios` passes; `git diff --check` passes.
-- Blockers: None for AIC-002. Database access design remains intentionally deferred until the review contract is evaluated and a safe external-agent publishing path is chosen.
-- Exact next action: Start AIC-002. Add versioned input/output fixtures for steady progress, apparent plateau, inconsistent weeks, return after a break, and tighter time constraints; record a compact evaluation rubric and verify every output against contract v1.
+- Validation: `npm run typecheck` passes; `npm test` passes 20/20 (13 coaching contract/fixture and 7 existing domain tests); `git diff --check` passes. AIC-001's iOS export remains the latest export and passed.
+- Blockers: None for AIC-003. Database access design remains intentionally deferred until the review contract is evaluated and a safe external-agent publishing path is chosen.
+- Exact next action: Start AIC-003. Freeze initial goal types, priority, target/date semantics, training constraints/preferences, coaching consent, and conflict/correction rules without adding persistence yet.
 
 ## Ready
 
-- **AIC-002 Representative review fixtures:** Create valid coaching-context and output fixtures for steady progress, apparent plateau, inconsistent weeks, return after a break, and tighter time constraints. Define minimum usable data and manually evaluate usefulness, evidence accuracy, tone, and repetition.
 - **AIC-003 Goal model design:** Freeze initial goal types, priority, target/date semantics, constraints, preferences, and coaching consent. Specify conflict and correction rules.
 
 ## In progress
@@ -60,6 +59,7 @@ None.
 ## Done
 
 - **AIC-001 Review contract v1:** Added provider-neutral output types, whole-payload validation, generation binding, evidence rules, continuity check-ins, invalid cases, and durable agent guidance. Evidence: typecheck, 14/14 tests, iOS export, and diff check pass on September 12, 2026.
+- **AIC-002 Representative review fixtures:** Added five synthetic input/output journeys, executable contract/evidence-reference checks, minimum-data guidance, and a quality/repetition rubric. Evidence: typecheck, 20/20 tests, and diff check pass on September 12, 2026; no external model run claimed.
 
 ## Validation expectations
 
@@ -71,6 +71,7 @@ None.
 ## Working-tree ownership
 
 - AIC-001 files: `src/coaching/contracts.ts`, `src/coaching/contracts.test.ts`, `docs/COACHING_AGENT_GUIDE.md`, and this feature board.
+- AIC-002 files: `src/coaching/fixtures.ts`, `src/coaching/fixtures.test.ts`, and `docs/AI_COACH_REVIEW_EVALUATION.md`.
 - Shared files intentionally touched by AIC-001: the `test` script only in `package.json`, plus WP-032 handoff/lane text in `docs/KANBAN.md`.
 - Earlier AI discovery work: `docs/AI_COACHING_PRD.md`.
 - Pre-existing QA-004 work that must remain separate: `.gitignore`, `README.md`, `.detoxrc.js`, `e2e/`, `scripts/`, Detox/Jest dependency changes in `package.json` and `package-lock.json`, and selector edits in `app/(tabs)/index.tsx`, `app/workout.tsx`, and `src/components/ExercisePicker.tsx`.
