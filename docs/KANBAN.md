@@ -12,7 +12,7 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001/AIC-002 are pushed, AIC-003 goal model is complete and ready to commit, and AIC-004 local persistence is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
+- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 through AIC-003 are pushed as `0d62b75`, `aa3be0c`, and `8f5fbbd`, and AIC-004 local persistence is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
 - Changes: Added a validated, versioned coaching profile with ranked goals, optional lift targets, training constraints/preferences, explicit history consent, weekly review preferences, and preserved goal revisions. Added durable precedence, consent, and correction semantics. No persistence or cloud changes yet; existing unrelated working-tree changes remain preserved.
 - Validation: AIC-003 passes `npm run typecheck`, `npm test` (27/27), and `git diff --check`. AIC-001's iOS export passed. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
 - Exact next action: Implement AIC-004 local-first profile persistence only. Do not begin remote migration, agent access, or routine proposals until their preceding feature tasks and security boundaries are complete.
