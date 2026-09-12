@@ -1,6 +1,6 @@
 # WorkoutPal Kanban
 
-Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone this session; on-device results are still pending from the user.
+Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone this session; on-device results are still pending from the user.
 
 ## Workflow
 
@@ -12,11 +12,11 @@ Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: None. WP-031's Supabase CLI blocker cleared this session (see below); [AI_COACHING_PRD.md](AI_COACHING_PRD.md) remains a draft only, no implementation authorized, WP-032 remains in Backlog for refinement.
-- Decisions: Versioned agent guide exposed through database briefing; WorkoutPal data is the baseline, with authorized session-available external context as optional enrichment. Reviews disclose sources/coverage; reusable external preferences require user confirmation. Existing Supabase MCP, offline UI, and user-approved routine proposals remain the direction. Access boundaries, scheduling, and external-source availability remain open. Operational note for future Supabase changes: `npx supabase migration list --linked` shows both 001 and 002 as unapplied remotely, but 001's schema is already live (it was applied out-of-band, not through tracked `db push`) — running `supabase db push` as-is would replay 001's `create table` statements and fail. Apply new SQL via `npx supabase db query --linked --file <path>` instead (same mechanism already used for `supabase/tests/rls.sql`), or repair the migration ledger first if switching to `db push`.
-- Validation: WP-031 — `npx supabase login` succeeded (the CLI had no stored token, and `projects list` without `--debug` hung rather than failing fast; `--debug` showed it actually was authenticated). Applied `supabase/migrations/002_delete_completed_workouts.sql` via `db query --file`, then fixed a bug in my own `supabase/tests/rls.sql` addition (it inserted rows for two different owners after the session had already switched to the `authenticated` role/JWT for one owner, which RLS correctly rejected; moved that fixture insert before `set local role authenticated`) and confirmed `db query --file supabase/tests/rls.sql` now prints PASS, including the completed-workout delete check. AI coaching draft: documentation and relative links reviewed, no runtime changes or tests needed.
-- Existing blockers: None. WP-009, WP-010, and WP-031 are all implemented and now sit in Verify awaiting the on-device checks listed there (WP-031's remote delete path is confirmed server-side via the RLS test, but not yet exercised from the app on the phone).
-- Exact next action: Reopen the AI coaching draft's "Decisions to revisit before implementation" with the user when returning to that thread; do not build it yet. Otherwise the next Ready task remains WP-001; inspect `src/data/database.ts` and `app/workout.tsx`.
+- Current: WP-032 implementation has started on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 review contract v1 is complete and AIC-002 representative fixtures is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
+- Changes: Added a review-only, versioned external-agent output contract, strict whole-payload validation tests, and [COACHING_AGENT_GUIDE.md](COACHING_AGENT_GUIDE.md). The contract requires evidence-backed claims and WorkoutPal baseline context, supports sparse-week continuity check-ins, binds output to the requested generation context, rejects unsupported ownership/routine fields, and excludes persistence and routine mutation. Updated the npm test glob so both root and nested suites run. Existing unrelated working-tree changes were preserved.
+- Validation: AIC-001 passes `npm run typecheck`, `npm test` (14/14), `npx expo export --platform ios`, and `git diff --check`. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
+- Exact next action: Build and evaluate the five AIC-002 representative weekly-review fixtures following the feature board. Do not begin database access or routine proposals until their preceding feature tasks and security boundaries are complete.
+- Prior context: WP-009/WP-010/WP-031 remain in Verify; migration 002 is applied and RLS tests passed previously. Remote migration ledger lists 001/002 as unapplied despite live schema; do not blindly `db push` without repairing ledger. Next feature priority remains WP-001 when product discovery is paused.
 
 ## Ready
 
@@ -27,7 +27,7 @@ Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## In progress
 
-None.
+- **WP-032 AI coaching:** Build the external-agent-driven weekly review and later user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-002 is next.
 
 ## Verify
 
@@ -37,7 +37,7 @@ None.
 
 ## Blocked
 
-None.
+- **QA-004 Detox E2E:** Configure local iOS Simulator builds and isolated, repeatable workout logging/history/restart tests; document commands and validate an actual run. Implementation and build are complete; actual Detox run is blocked until several GB of disk space are freed.
 
 ## Backlog
 
@@ -67,7 +67,6 @@ Ordered by feature priority; dependencies constrain eligibility.
 - **WP-028 Superset UI:** Grouping controls and alternating-set flow; preserve ordinary workouts; after WP-027.
 - **WP-029 Substitution:** Session-only replacement preserves position and logged performance, uses replacement history, and makes saved-routine changes explicit. Independently deliverable from supersets.
 - **WP-030 Group/substitution QA:** Offline, restart, repeat, and sync; after WP-028, WP-029.
-- **WP-032 AI coaching concept:** Refine [draft PRD](AI_COACHING_PRD.md) with the user; resolve agent access, scheduling, context/output contract, and proposal acceptance before creating implementation tasks. Idea only; not approved to build.
 - **QA-001:** Physical-iPhone offline logging, reconnect, and sync.
 - **QA-002:** Active-workout recovery and timer across backgrounding/restart.
 - **QA-003:** Larger text, VoiceOver, touch targets, and keyboard in active workouts.
