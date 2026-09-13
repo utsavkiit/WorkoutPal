@@ -23,3 +23,20 @@ export async function cancelRestNotification() {
   if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => undefined);
   notificationId = null;
 }
+
+export async function requestCoachNotificationPermission() {
+  const current = await Notifications.getPermissionsAsync();
+  if (current.granted) return true;
+  return (await Notifications.requestPermissionsAsync()).granted;
+}
+
+export async function notifyCoachReviewReady(reviewId: string) {
+  const permission = await Notifications.getPermissionsAsync();
+  if (!permission.granted) return false;
+  await Notifications.scheduleNotificationAsync({
+    identifier: `coach-review-${reviewId}`,
+    content: { title: 'Your weekly review is ready', body: 'Open WorkoutPal to see your Coach insights.', sound: 'default', data: { reviewId } },
+    trigger: null,
+  });
+  return true;
+}

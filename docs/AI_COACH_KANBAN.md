@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-012 is complete; AIC-016 weekly scheduling is in progress as the next eligible task. AIC-006/AIC-011 await physical-iPhone verification. AIC-013–AIC-015 remain dependency-gated by WP-013–WP-015. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added local-first usefulness/tone/changed-constraint feedback, review UI controls, cloud sync/RLS, and next-context inclusion. Routine, check-in, and feedback changes now alter the context generation fingerprint to prevent stale regeneration.
+- Current: AIC-016 is implemented and awaiting physical-iPhone verification; AIC-017 security/privacy review is in progress. AIC-006/AIC-011 also await device verification. AIC-013–AIC-015 remain dependency-gated by WP-013–WP-015. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added deterministic preferred-day scheduling on launch/foreground, offline outbox enqueueing, same-period duplicate prevention, and separate opt-in review-ready notifications with local delivery deduplication.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-012 passes typecheck, 43/43 tests, iOS export, migration parity, remote two-user RLS tests, security advisors, and diff check.
+- Validation: AIC-016 passes typecheck and 47/47 tests, including DST, disabled/consent, duplicate, and delayed scheduling cases. Physical notification delivery and an offline lifecycle journey remain pending.
 - Blockers: AIC-013/AIC-015 wait on the routine target tasks WP-013–WP-015. AIC-006/AIC-011 device verification is pending; none blocks AIC-016.
-- Exact next action: Implement automatic preferred-day scheduling, duplicate prevention, notification opt-in, delayed/offline behavior, and lifecycle checks without blocking workout logging.
+- Exact next action: Complete AIC-017 threat modeling and harden the agent boundary, especially consent revocation and whole-payload validation, then rerun ownership and advisor checks.
 
 ## Ready
 
@@ -28,12 +28,13 @@ None.
 
 ## In progress
 
-- **AIC-016 Weekly scheduling:** Implement preferred review day/timezone, opt-in notification, duplicate prevention, delayed/offline behavior, retries, and failure visibility; after AIC-010.
+- **AIC-017 Security and privacy review:** Threat-model agent credentials, prompt injection from stored text, data minimization, consent, retention/deletion, external context, auditability, and cross-user access. Run advisors and all ownership tests before rollout.
 
 ## Verify
 
 - **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004. Implementation/typecheck/tests/export pass; verify VoiceOver, large text, keyboard flow, offline save/restart, and consent copy on the physical iPhone.
 - **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009. Implementation/typecheck/tests/export pass; verify navigation, state transitions, evidence links, VoiceOver, large text, and offline archive on the physical iPhone.
+- **AIC-016 Weekly scheduling:** Preferred-day/timezone lifecycle scheduling, offline enqueueing, same-period duplicate prevention, retries/failure visibility, and separate review-ready notification opt-in are implemented. Verify one due run, one missed/offline catch-up, duplicate suppression across relaunch, and notification delivery on the physical iPhone.
 
 ## Blocked
 
@@ -44,7 +45,6 @@ None.
 - **AIC-013 Routine proposal contract:** Define supported routine fields, per-change rationale, safety constraints, source routine version, conflict detection, and invalid-output cases; after WP-013.
 - **AIC-014 Proposal persistence and sync:** Store pending/accepted/dismissed proposals with immutable source data, RLS, idempotency, and offline availability; after AIC-013 and AIC-009.
 - **AIC-015 Proposal comparison and adoption:** Show before/after changes and accept/edit/dismiss. Preserve the prior routine, never change an active workout, and prevent duplicate or stale application; after AIC-014 and WP-015.
-- **AIC-017 Security and privacy review:** Threat-model agent credentials, prompt injection from stored text, data minimization, consent, retention/deletion, external context, auditability, and cross-user access. Run advisors and all ownership tests before rollout.
 - **AIC-018 End-to-end QA:** Validate offline logging independence, sync recovery, corrected/deleted history, sparse weeks, week/DST boundaries, duplicate runs, invalid agent output, stale routines, accessibility, and physical-iPhone behavior.
 
 ## Done

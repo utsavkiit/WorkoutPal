@@ -10,6 +10,7 @@ import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
 import { StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
 import { CoachingGenerationRequestV1, validateGenerationRequest } from '../coaching/workflow';
 import { CoachReviewFeedbackV1, validateCoachReviewFeedback } from '../coaching/feedback';
+import { WeeklyScheduleDecision, weeklyScheduleDecision } from '../coaching/scheduling';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -86,6 +87,10 @@ CREATE TABLE IF NOT EXISTS coach_review_feedback (
   profile_revision INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   FOREIGN KEY(review_id) REFERENCES coach_reviews(id) ON DELETE CASCADE,
   FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
+);
+CREATE TABLE IF NOT EXISTS coach_review_notifications (
+  review_id TEXT PRIMARY KEY, delivered_at TEXT NOT NULL,
+  FOREIGN KEY(review_id) REFERENCES coach_reviews(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
@@ -517,6 +522,22 @@ export async function requestCoachReview(at = new Date()): Promise<CoachingGener
     await enqueueWithDatabase(db, 'coaching_request', request.id, 'insert', request);
   });
   return request;
+}
+
+export async function scheduleWeeklyCoachReview(at = new Date()): Promise<WeeklyScheduleDecision> {
+  const decision = weeklyScheduleDecision(await getCurrentCoachingProfile(), await listCoachingGenerationRequests(), at);
+  if (decision.shouldRequest) await requestCoachReview(at);
+  return decision;
+}
+
+export async function hasDeliveredCoachReviewNotification(reviewId: string): Promise<boolean> {
+  const db = await database();
+  return !!(await db.getFirstAsync('SELECT review_id FROM coach_review_notifications WHERE review_id=?', reviewId));
+}
+
+export async function markCoachReviewNotificationDelivered(reviewId: string): Promise<void> {
+  const db = await database();
+  await db.runAsync('INSERT OR IGNORE INTO coach_review_notifications (review_id,delivered_at) VALUES (?,?)', reviewId, now());
 }
 
 export async function retryCoachingGenerationRequest(id: string): Promise<void> {

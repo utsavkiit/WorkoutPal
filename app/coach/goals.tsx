@@ -10,6 +10,7 @@ import { makeId } from '../../src/data/id';
 import { CoachingProfileV1, TrainingGoalFocus, createDefaultCoachingProfile, validateCoachingProfile } from '../../src/coaching/goals';
 import { Exercise } from '../../src/types';
 import { useTheme } from '../../src/theme';
+import { requestCoachNotificationPermission } from '../../src/services/timer';
 
 type GoalType = TrainingGoalFocus['type'];
 const goalOptions: { value: GoalType; label: string }[] = [
@@ -48,6 +49,7 @@ export default function GoalsScreen() {
   const [coachingEnabled, setCoachingEnabled] = useState(false);
   const [shareHistory, setShareHistory] = useState(false);
   const [weeklyEnabled, setWeeklyEnabled] = useState(false);
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
   const [reviewDay, setReviewDay] = useState<0 | 1 | 2 | 3 | 4 | 5 | 6>(0);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ export default function GoalsScreen() {
         setCoachingEnabled(profile.consent.coachingEnabled);
         setShareHistory(profile.consent.shareWorkoutHistory);
         setWeeklyEnabled(profile.weeklyReview.enabled);
+        setNotificationEnabled(profile.weeklyReview.notificationEnabled);
         setReviewDay(profile.weeklyReview.dayOfWeek);
       }
     }).catch((error) => Alert.alert('Could not load goals', error instanceof Error ? error.message : String(error))).finally(() => setLoading(false));
@@ -117,7 +120,7 @@ export default function GoalsScreen() {
         consentedAt,
         revokedAt: coachingEnabled ? null : (base.consent.coachingEnabled ? timestamp : base.consent.revokedAt),
       },
-      weeklyReview: { ...base.weeklyReview, enabled: weeklyEnabled && coachingEnabled, dayOfWeek: reviewDay, timezone: timezone() },
+      weeklyReview: { ...base.weeklyReview, enabled: weeklyEnabled && coachingEnabled, dayOfWeek: reviewDay, timezone: timezone(), notificationEnabled: notificationEnabled && weeklyEnabled && coachingEnabled },
     };
     const validation = validateCoachingProfile(profile);
     if (!validation.ok) return Alert.alert('Check your goals', validation.errors[0]);
@@ -150,6 +153,7 @@ export default function GoalsScreen() {
     <Text style={[styles.section, { color: t.secondary }]}>PRIVACY & REVIEWS</Text>
     <Card><Toggle label="Enable AI Coach" detail="Coach stays off until you explicitly enable it." value={coachingEnabled} onChange={(value) => { setCoachingEnabled(value); if (!value) setWeeklyEnabled(false); }}/><Divider/><Toggle label="Share workout history with Coach" detail="Required for history-grounded coaching. This does not enable notifications." value={shareHistory} onChange={(value) => { setShareHistory(value); if (!value) { setCoachingEnabled(false); setWeeklyEnabled(false); } }}/><Divider/><Toggle label="Weekly reviews" detail="Generate a review after your selected local week closes." value={weeklyEnabled} onChange={(value) => { if (value && (!coachingEnabled || !shareHistory)) Alert.alert('Enable consent first', 'Enable Coach and workout-history access before weekly reviews.'); else setWeeklyEnabled(value); }}/>
       {weeklyEnabled && <><FieldLabel>Review day</FieldLabel><View style={styles.wrap}>{dayLabels.map((label, index) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: reviewDay === index }} key={label} onPress={() => setReviewDay(index as typeof reviewDay)} style={[styles.day, { backgroundColor: reviewDay === index ? t.accent : t.elevated }]}><Text style={{ color: reviewDay === index ? '#07150C' : t.text, fontWeight: '700' }}>{label}</Text></Pressable>)}</View></>}
+      {weeklyEnabled && <><Divider/><Toggle label="Review-ready notifications" detail="Optional. Notify me only when a new review is available." value={notificationEnabled} onChange={async (value) => { if (!value) return setNotificationEnabled(false); const granted = await requestCoachNotificationPermission(); if (granted) setNotificationEnabled(true); else Alert.alert('Notifications are off', 'You can enable WorkoutPal notifications in iPhone Settings.'); }}/></>}
     </Card>
     <PrimaryButton title={saving ? 'Saving…' : existing ? 'Save new revision' : 'Save goals'} disabled={saving} onPress={save}/>
     <PrimaryButton kind="secondary" title="External agent setup" onPress={() => router.push('/coach/setup')}/>
