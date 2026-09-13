@@ -1,6 +1,6 @@
 # AI Coach feature Kanban
 
-Updated: September 12, 2026. Branch: `feature/ai-coach`.
+Updated: September 13, 2026. Branch: `feature/ai-coach`.
 
 This is the detailed source of truth for AI Coach work. The global [KANBAN.md](KANBAN.md) retains the feature-level priority and links here. Work one task at a time. Before stopping, overwrite the Handoff with current state, decisions, validation, blockers, and the exact next action.
 
@@ -15,20 +15,20 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-001 through AIC-003 are complete and pushed as `0d62b75`, `aa3be0c`, and `8f5fbbd`. AIC-004 local goal persistence is the exact next task. Branch `feature/ai-coach` was created from `main` at `7221ea4` while uncommitted QA-004 work and earlier AI PRD edits were already present. They were preserved; future commits must separate AI Coach files from unrelated QA-004 changes.
-- Changes: Added the versioned goal/profile model and validator in `src/coaching/goals.ts`, tests in `src/coaching/goals.test.ts`, and durable semantics in `docs/AI_COACH_GOAL_MODEL.md`. V1 supports one primary plus two ranked secondary goals, directional or numeric lift goals, hypertrophy/consistency/maintenance goals, constraints, preferences, weekly schedule, explicit workout-history consent, inactive goal history, and revision metadata. No persistence or cloud access was added.
+- Current: AIC-004 is complete; AIC-005 goal cloud sync is in progress. AIC-001 through AIC-003 were previously pushed as `0d62b75`, `aa3be0c`, and `8f5fbbd`. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added local SQLite profile revision and check-in tables, validated hydration, immutable sequential revisions, client-generated identities, repository APIs, atomic durable outbox writes, and owner attachment without requiring sign-in or network access.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: `npm run typecheck` passes; `npm test` passes 27/27 (20 coaching and 7 existing domain tests); `git diff --check` passes. AIC-001's iOS export remains the latest export and passed.
-- Blockers: None for AIC-004 local persistence. Remote migration work remains deferred to AIC-005 and must not proceed until the migration-ledger mismatch is resolved.
-- Exact next action: Implement AIC-004 local-first SQLite profile revision storage, client-generated IDs, repository APIs, and durable outbox entries. Keep it independent of sign-in/network and do not add remote schema changes.
+- Validation: AIC-004 passes `npm run typecheck`, `npm test` (29/29), `npx expo export --platform ios`, and `git diff --check` on September 13, 2026. Device persistence remains part of AIC-018 end-to-end QA.
+- Blockers: The remote migration ledger mismatch must be inspected and repaired before applying AIC-005 to the linked project; local migration implementation can proceed.
+- Exact next action: Implement AIC-005 migration, sync/merge behavior, and two-user RLS coverage locally, then inspect and safely repair the linked migration ledger before any remote apply.
 
 ## Ready
 
-- **AIC-004 Goal persistence:** Implement local-first SQLite goal/check-in storage, client-generated IDs, upgrades, repository APIs, and outbox entries; after AIC-003.
+None.
 
 ## In progress
 
-None.
+- **AIC-005 Goal cloud sync:** Add Supabase migration with explicit grants, RLS ownership policies, sync/merge behavior, and two-user RLS tests; after AIC-004. Do not apply remotely until the migration ledger mismatch in the global handoff is resolved.
 
 ## Verify
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-005 Goal cloud sync:** Add Supabase migration with explicit grants, RLS ownership policies, sync/merge behavior, and two-user RLS tests; after AIC-004. Do not apply remotely until the migration ledger mismatch in the global handoff is resolved.
 - **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004.
 - **AIC-007 Weekly metrics:** Deterministically calculate timezone-correct review periods, completed sessions, working-set evidence, unit-normalized comparisons, data coverage, and latest included workout. Handle corrections/deletions and sparse weeks; coordinate with WP-005 and WP-024.
 - **AIC-008 Coaching context v1:** Assemble a bounded, versioned, user-scoped context from goals, current routine, deterministic metrics, detailed evidence pointers, prior review decision, and data coverage; after AIC-005 and AIC-007.
@@ -57,6 +56,7 @@ None.
 
 ## Done
 
+- **AIC-004 Goal persistence:** Added offline-first SQLite profile revision/check-in storage, immutable sequential revisions, repository APIs, atomic outbox writes, owner attachment, safe defaults, and validation coverage. Evidence: typecheck, 29/29 tests, iOS export, and diff check pass on September 13, 2026.
 - **AIC-001 Review contract v1:** Added provider-neutral output types, whole-payload validation, generation binding, evidence rules, continuity check-ins, invalid cases, and durable agent guidance. Evidence: typecheck, 14/14 tests, iOS export, and diff check pass on September 12, 2026.
 - **AIC-002 Representative review fixtures:** Added five synthetic input/output journeys, executable contract/evidence-reference checks, minimum-data guidance, and a quality/repetition rubric. Evidence: typecheck, 20/20 tests, and diff check pass on September 12, 2026; no external model run claimed.
 - **AIC-003 Goal model design:** Added validated v1 goal/profile types, ranked-goal semantics, constraints/preferences, weekly scheduling and consent rules, revision/correction guidance, and 7 goal-model tests. Evidence: typecheck, 27/27 tests, and diff check pass on September 12, 2026.

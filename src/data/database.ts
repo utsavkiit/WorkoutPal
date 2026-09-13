@@ -4,6 +4,7 @@ import { Exercise, ExerciseType, Routine, RoutineExercise, UserPreferences, Weig
 import { canCompleteSet } from '../domain';
 import { now } from '../utils';
 import { makeId } from './id';
+import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validateCoachingProfile } from '../coaching/goals';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -53,8 +54,20 @@ CREATE TABLE IF NOT EXISTS outbox (
   id TEXT PRIMARY KEY, entity TEXT NOT NULL, entity_id TEXT NOT NULL, operation TEXT NOT NULL,
   payload TEXT NOT NULL, created_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT
 );
+CREATE TABLE IF NOT EXISTS coaching_profiles (
+  revision_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision > 0),
+  owner_id TEXT, payload TEXT NOT NULL, effective_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE(profile_id, revision)
+);
+CREATE TABLE IF NOT EXISTS coaching_check_ins (
+  id TEXT PRIMARY KEY, owner_id TEXT, profile_id TEXT NOT NULL, profile_revision INTEGER NOT NULL,
+  payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
+);
 CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
+CREATE INDEX IF NOT EXISTS coaching_profile_latest ON coaching_profiles(profile_id, revision DESC);
+CREATE INDEX IF NOT EXISTS coaching_check_ins_date ON coaching_check_ins(created_at DESC);
 `;
 
 async function initializeDatabaseOnce() {
@@ -300,7 +313,11 @@ export async function deleteHistorySet(setId: string) {
 }
 
 export type OutboxRow = { id: string; entity: string; entity_id: string; operation: string; payload: string; attempts: number };
-export async function enqueue(entity: string, entityId: string, operation: string, payload: unknown) { const db = await database(); await db.runAsync('DELETE FROM outbox WHERE entity=? AND entity_id=?', entity, entityId); await db.runAsync('INSERT INTO outbox VALUES (?,?,?,?,?,?,0,NULL)', makeId(), entity, entityId, operation, JSON.stringify(payload), now()); }
+async function enqueueWithDatabase(db: SQLite.SQLiteDatabase, entity: string, entityId: string, operation: string, payload: unknown) {
+  await db.runAsync('DELETE FROM outbox WHERE entity=? AND entity_id=?', entity, entityId);
+  await db.runAsync('INSERT INTO outbox VALUES (?,?,?,?,?,?,0,NULL)', makeId(), entity, entityId, operation, JSON.stringify(payload), now());
+}
+export async function enqueue(entity: string, entityId: string, operation: string, payload: unknown) { const db = await database(); await enqueueWithDatabase(db, entity, entityId, operation, payload); }
 async function enqueueRoutine(id: string) { const routine = await getRoutine(id); if (routine) await enqueue('routine', id, 'snapshot', routine); }
 async function enqueueWorkout(id: string) { const workout = await getWorkout(id); if (workout) await enqueue('workout', id, 'snapshot', workout); }
 export async function getOutbox() { const db = await database(); return db.getAllAsync<OutboxRow>('SELECT * FROM outbox ORDER BY created_at LIMIT 50'); }
@@ -312,6 +329,77 @@ export async function attachLocalOwner(ownerId: string) {
     await db.runAsync('UPDATE exercises SET owner_id=? WHERE is_custom=1 AND owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE routines SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE workout_sessions SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coaching_profiles SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coaching_check_ins SET owner_id=? WHERE owner_id IS NULL', ownerId);
+  });
+}
+
+type CoachingProfileRow = { payload: string };
+type CoachingCheckInRow = { payload: string };
+
+function parseCoachingProfile(row: CoachingProfileRow | null): CoachingProfileV1 | null {
+  if (!row) return null;
+  const validation = validateCoachingProfile(JSON.parse(row.payload));
+  if (!validation.ok) throw new Error(`Stored coaching profile is invalid: ${validation.errors.join(' ')}`);
+  return validation.value;
+}
+
+function parseCoachingCheckIn(row: CoachingCheckInRow): CoachingCheckInV1 {
+  const validation = validateCoachingCheckIn(JSON.parse(row.payload));
+  if (!validation.ok) throw new Error(`Stored coaching check-in is invalid: ${validation.errors.join(' ')}`);
+  return validation.value;
+}
+
+export async function getCurrentCoachingProfile(): Promise<CoachingProfileV1 | null> {
+  const db = await database();
+  return parseCoachingProfile(await db.getFirstAsync<CoachingProfileRow>('SELECT payload FROM coaching_profiles ORDER BY effective_at DESC, revision DESC LIMIT 1'));
+}
+
+export async function listCoachingProfileRevisions(profileId?: string): Promise<CoachingProfileV1[]> {
+  const db = await database();
+  const rows = profileId
+    ? await db.getAllAsync<CoachingProfileRow>('SELECT payload FROM coaching_profiles WHERE profile_id=? ORDER BY revision DESC', profileId)
+    : await db.getAllAsync<CoachingProfileRow>('SELECT payload FROM coaching_profiles ORDER BY effective_at DESC, revision DESC');
+  return rows.map((row) => parseCoachingProfile(row)!);
+}
+
+export async function saveCoachingProfileRevision(profile: CoachingProfileV1): Promise<void> {
+  const validation = validateCoachingProfile(profile);
+  if (!validation.ok) throw new Error(validation.errors.join(' '));
+  const db = await database();
+  const latest = await db.getFirstAsync<{ profile_id: string; revision: number }>('SELECT profile_id, revision FROM coaching_profiles ORDER BY effective_at DESC, revision DESC LIMIT 1');
+  if (latest && latest.profile_id !== profile.id) throw new Error('Profile identity cannot change when creating a revision.');
+  if ((latest?.revision ?? 0) + 1 !== profile.revision) throw new Error(`Profile revision must be ${(latest?.revision ?? 0) + 1}.`);
+  const revisionId = `${profile.id}:${profile.revision}`;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'INSERT INTO coaching_profiles (revision_id,profile_id,revision,owner_id,payload,effective_at,updated_at) VALUES (?,?,?,NULL,?,?,?)',
+      revisionId, profile.id, profile.revision, JSON.stringify(validation.value), profile.effectiveAt, profile.updatedAt,
+    );
+    await enqueueWithDatabase(db, 'coaching_profile', revisionId, 'upsert', validation.value);
+  });
+}
+
+export async function listCoachingCheckIns(profileId?: string): Promise<CoachingCheckInV1[]> {
+  const db = await database();
+  const rows = profileId
+    ? await db.getAllAsync<CoachingCheckInRow>('SELECT payload FROM coaching_check_ins WHERE profile_id=? ORDER BY created_at DESC', profileId)
+    : await db.getAllAsync<CoachingCheckInRow>('SELECT payload FROM coaching_check_ins ORDER BY created_at DESC');
+  return rows.map(parseCoachingCheckIn);
+}
+
+export async function saveCoachingCheckIn(checkIn: CoachingCheckInV1): Promise<void> {
+  const validation = validateCoachingCheckIn(checkIn);
+  if (!validation.ok) throw new Error(validation.errors.join(' '));
+  const db = await database();
+  const profile = await db.getFirstAsync('SELECT revision_id FROM coaching_profiles WHERE profile_id=? AND revision=?', checkIn.profileId, checkIn.profileRevision);
+  if (!profile) throw new Error('The referenced coaching profile revision does not exist.');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'INSERT INTO coaching_check_ins (id,owner_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,NULL,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_check_ins.updated_at',
+      checkIn.id, checkIn.profileId, checkIn.profileRevision, JSON.stringify(validation.value), checkIn.createdAt, checkIn.updatedAt,
+    );
+    await enqueueWithDatabase(db, 'coaching_check_in', checkIn.id, 'upsert', validation.value);
   });
 }
 

@@ -52,8 +52,26 @@ export interface CoachingProfileV1 {
   };
 }
 
+export type CoachingCheckInRating = 1 | 2 | 3 | 4 | 5;
+
+export interface CoachingCheckInV1 {
+  schemaVersion: typeof COACHING_PROFILE_VERSION;
+  id: string;
+  profileId: string;
+  profileRevision: number;
+  createdAt: string;
+  updatedAt: string;
+  energy: CoachingCheckInRating;
+  recovery: CoachingCheckInRating;
+  note: string | null;
+}
+
 export type CoachingProfileValidationResult =
   | { ok: true; value: CoachingProfileV1 }
+  | { ok: false; errors: string[] };
+
+export type CoachingCheckInValidationResult =
+  | { ok: true; value: CoachingCheckInV1 }
   | { ok: false; errors: string[] };
 
 const goalStatuses: TrainingGoalStatus[] = ['active', 'paused', 'achieved', 'archived'];
@@ -223,4 +241,35 @@ export function validateCoachingProfile(input: unknown): CoachingProfileValidati
   }
 
   return errors.length ? { ok: false, errors } : { ok: true, value: input as unknown as CoachingProfileV1 };
+}
+
+export function validateCoachingCheckIn(input: unknown): CoachingCheckInValidationResult {
+  const errors: string[] = [];
+  if (!isRecord(input)) return { ok: false, errors: ['Coaching check-in must be an object.'] };
+  if (input.schemaVersion !== COACHING_PROFILE_VERSION) errors.push(`schemaVersion must be ${COACHING_PROFILE_VERSION}.`);
+  requiredText(input.id, 'id', 80, errors);
+  requiredText(input.profileId, 'profileId', 80, errors);
+  if (!Number.isInteger(input.profileRevision) || (input.profileRevision as number) < 1) errors.push('profileRevision must be a positive integer.');
+  if (!isIsoTimestamp(input.createdAt)) errors.push('createdAt must be an ISO timestamp.');
+  if (!isIsoTimestamp(input.updatedAt)) errors.push('updatedAt must be an ISO timestamp.');
+  for (const key of ['energy', 'recovery'] as const) {
+    if (!Number.isInteger(input[key]) || (input[key] as number) < 1 || (input[key] as number) > 5) errors.push(`${key} must be an integer from 1 to 5.`);
+  }
+  optionalText(input.note, 'note', 500, errors);
+  return errors.length ? { ok: false, errors } : { ok: true, value: input as unknown as CoachingCheckInV1 };
+}
+
+export function createDefaultCoachingProfile(id: string, timestamp: string, timezone: string): CoachingProfileV1 {
+  return {
+    schemaVersion: COACHING_PROFILE_VERSION,
+    id,
+    revision: 1,
+    effectiveAt: timestamp,
+    updatedAt: timestamp,
+    goals: [{ id: `${id}-goal-1`, status: 'active', priority: 1, focus: { type: 'general_strength' }, motivation: null, targetDate: null }],
+    constraints: { availableDaysPerWeek: 3, sessionMinutes: 60, equipment: [], considerations: null },
+    preferences: { preferredExerciseIds: [], avoidedExerciseIds: [] },
+    consent: { coachingEnabled: false, shareWorkoutHistory: false, includeCheckIns: false, consentedAt: null, revokedAt: null },
+    weeklyReview: { enabled: false, dayOfWeek: 0, timezone, notificationEnabled: false },
+  };
 }

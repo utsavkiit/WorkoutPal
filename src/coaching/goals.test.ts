@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CoachingProfileV1, validateCoachingProfile } from './goals';
+import { CoachingCheckInV1, CoachingProfileV1, createDefaultCoachingProfile, validateCoachingCheckIn, validateCoachingProfile } from './goals';
 
 const profile = (): CoachingProfileV1 => ({
   schemaVersion: 1,
@@ -99,4 +99,28 @@ test('allows a directional lift goal and preserves inactive goal history', () =>
   inactive.consent.coachingEnabled = false;
   inactive.weeklyReview.enabled = false;
   assert.equal(validateCoachingProfile(inactive).ok, true);
+});
+
+test('creates a safe local-only default profile', () => {
+  const value = createDefaultCoachingProfile('profile-local', '2026-09-13T12:00:00.000Z', 'America/New_York');
+  assert.equal(validateCoachingProfile(value).ok, true);
+  assert.equal(value.consent.coachingEnabled, false);
+  assert.equal(value.consent.shareWorkoutHistory, false);
+  assert.equal(value.weeklyReview.enabled, false);
+});
+
+test('validates bounded check-ins tied to an immutable profile revision', () => {
+  const checkIn: CoachingCheckInV1 = {
+    schemaVersion: 1,
+    id: 'check-in-1',
+    profileId: 'profile-1',
+    profileRevision: 2,
+    createdAt: '2026-09-13T12:00:00.000Z',
+    updatedAt: '2026-09-13T12:00:00.000Z',
+    energy: 4,
+    recovery: 3,
+    note: 'Short week, but sleep improved.',
+  };
+  assert.equal(validateCoachingCheckIn(checkIn).ok, true);
+  assert.equal(validateCoachingCheckIn({ ...checkIn, energy: 6, note: 'x'.repeat(501) }).ok, false);
 });
