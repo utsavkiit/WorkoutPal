@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-007 is complete; AIC-008 coaching context v1 is in progress. AIC-006 awaits physical-iPhone verification. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added deterministic local-week boundaries, including DST-safe date arithmetic; current/prior completed-session metrics; completed working-set evidence; per-exercise mixed-unit normalization; duration, coverage, comparable-history, latest-workout, and review-kind decisions. Corrections/deletions naturally recalculate from current local history.
+- Current: AIC-008 is complete; AIC-009 review persistence is in progress. AIC-006 awaits physical-iPhone verification. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added the provider-neutral v1 coaching context with explicit untrusted-user-text labeling, immutable goal revision, current routine version, deterministic metrics, capped detailed evidence, consent-gated check-ins, prior-decision slot, truncation disclosure, and a generation key that changes when included history is corrected.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-007 passes typecheck, 32/32 tests, and diff check, including DST, mixed-unit, incomplete-set, comparison, and sparse-week cases.
-- Blockers: None for AIC-008; AIC-006 device verification is pending.
-- Exact next action: Assemble and validate the bounded v1 agent context from the current immutable profile revision, routine, weekly metrics, detailed evidence, check-ins, prior review decision, and coverage.
+- Validation: AIC-008 passes typecheck, 35/35 tests, and diff check, including bounding, correction-key invalidation, consent refusal, and prompt-injection trust labeling.
+- Blockers: None for AIC-009; AIC-006 device verification is pending.
+- Exact next action: Add immutable local/cloud review revisions, superseded-data detection, generation uniqueness, validated publishing, offline sync, and RLS tests.
 
 ## Ready
 
@@ -28,7 +28,7 @@ None.
 
 ## In progress
 
-- **AIC-008 Coaching context v1:** Assemble a bounded, versioned, user-scoped context from goals, current routine, deterministic metrics, detailed evidence pointers, prior review decision, and data coverage; after AIC-005 and AIC-007.
+- **AIC-009 Review persistence:** Add local/cloud review storage, immutable revisions, superseded-data state, stable generation uniqueness, validated publishing boundary, RLS tests, and offline sync; after AIC-001 and AIC-008.
 
 ## Verify
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-009 Review persistence:** Add local/cloud review storage, immutable revisions, superseded-data state, stable generation uniqueness, validated publishing boundary, RLS tests, and offline sync; after AIC-001 and AIC-008.
 - **AIC-010 External agent workflow:** Configure the chosen project-scoped read path and narrow publishing path, weekly trigger, retries, failure visibility, and copyable setup instructions. Unattended MCP must remain read-only; after AIC-009.
 - **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009.
 - **AIC-012 Coaching feedback:** Persist lightweight usefulness/tone feedback and changed constraints locally first, then sync for the next context; after AIC-011.
@@ -53,6 +52,7 @@ None.
 
 ## Done
 
+- **AIC-008 Coaching context v1:** Added a consent-gated, provider-neutral, bounded context with goal/routine versions, deterministic metrics, detailed evidence, check-ins, prior-decision slot, truncation disclosure, trust labeling, and correction-sensitive generation keys. Evidence: typecheck, 35/35 tests, and diff check on September 13, 2026.
 - **AIC-007 Weekly metrics:** Added DST-safe completed local weeks, completed-session/working-set metrics, per-exercise mixed-unit normalization, evidence IDs, coverage/comparability, latest workout, and deterministic review-kind selection. Evidence: typecheck, 32/32 tests, and diff check on September 13, 2026.
 - **AIC-005 Goal cloud sync:** Added/applied explicit-grant profile/check-in tables, immutable revision and owner-scoped RLS policies, outbox push plus validated pull/merge, and two-user isolation tests. Repaired migration history first. Evidence: remote RLS pass, migration parity, no new-table advisor findings, typecheck, 29/29 tests, iOS export, and diff check on September 13, 2026.
 - **AIC-004 Goal persistence:** Added offline-first SQLite profile revision/check-in storage, immutable sequential revisions, repository APIs, atomic outbox writes, owner attachment, safe defaults, and validation coverage. Evidence: typecheck, 29/29 tests, iOS export, and diff check pass on September 13, 2026.

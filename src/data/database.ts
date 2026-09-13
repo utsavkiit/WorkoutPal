@@ -6,6 +6,7 @@ import { now } from '../utils';
 import { makeId } from './id';
 import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validateCoachingProfile } from '../coaching/goals';
 import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coaching/metrics';
+import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -408,6 +409,15 @@ export async function getWeeklyCoachingMetrics(at = new Date()): Promise<WeeklyC
   const profile = await getCurrentCoachingProfile();
   if (!profile) return null;
   return calculateWeeklyCoachingMetrics(await listHistory(), profile, at);
+}
+
+export async function getCoachingContext(at = new Date()): Promise<CoachingContextV1 | null> {
+  const profile = await getCurrentCoachingProfile();
+  if (!profile || !profile.consent.coachingEnabled || !profile.consent.shareWorkoutHistory) return null;
+  const workouts = await listHistory();
+  const metrics = calculateWeeklyCoachingMetrics(workouts, profile, at);
+  const [routines, checkIns] = await Promise.all([listRoutines(), listCoachingCheckIns(profile.id)]);
+  return buildCoachingContext({ profile, metrics, workouts, currentRoutine: routines[0] ?? null, checkIns });
 }
 
 export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[] }) {

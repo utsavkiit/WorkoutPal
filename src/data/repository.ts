@@ -30,6 +30,7 @@ export interface CoachingRepository {
   checkIns(profileId?: string): Promise<CoachingCheckInV1[]>;
   saveCheckIn(checkIn: CoachingCheckInV1): Promise<void>;
   weeklyMetrics(at?: Date): ReturnType<typeof local.getWeeklyCoachingMetrics>;
+  context(at?: Date): ReturnType<typeof local.getCoachingContext>;
 }
 
 export const repositories = {
@@ -44,5 +45,6 @@ export const repositories = {
     checkIns: local.listCoachingCheckIns,
     saveCheckIn: local.saveCoachingCheckIn,
     weeklyMetrics: local.getWeeklyCoachingMetrics,
+    context: local.getCoachingContext,
   } satisfies CoachingRepository,
 };
