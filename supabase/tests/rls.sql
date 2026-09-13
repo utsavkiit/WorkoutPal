@@ -11,6 +11,12 @@ insert into public.user_preferences(user_id,unit,rest_seconds,updated_at) values
 insert into public.workout_sessions(id,owner_id,name,status,started_at,ended_at,updated_at) values
   ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','RLS fixture completed','completed',now(),now(),now()),
   ('30000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','RLS fixture completed','completed',now(),now(),now());
+insert into public.coaching_profiles(profile_id,revision,owner_id,schema_version,payload,effective_at,updated_at) values
+  ('40000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000001',1,'{}',now(),now()),
+  ('40000000-0000-4000-8000-000000000002',1,'10000000-0000-4000-8000-000000000002',1,'{}',now(),now());
+insert into public.coaching_check_ins(id,owner_id,profile_id,profile_revision,schema_version,payload,created_at,updated_at) values
+  ('50000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',1,1,'{}',now(),now()),
+  ('50000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000002',1,1,'{}',now(),now());
 set local role authenticated;
 do $test$
 declare n integer; t text; own_id uuid; other_id uuid; own_user uuid; other_user uuid; c integer;
@@ -71,6 +77,40 @@ begin
   if c<>1 then raise exception 'Own completed workout delete blocked'; end if;
 end $test_completed_delete$;
 
+do $test_coaching_rls$
+declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  select count(*) into c from public.coaching_profiles where profile_id='40000000-0000-4000-8000-000000000001';
+  if c<>1 then raise exception 'Own coaching profile hidden'; end if;
+  select count(*) into c from public.coaching_profiles where profile_id='40000000-0000-4000-8000-000000000002';
+  if c<>0 then raise exception 'Other coaching profile exposed'; end if;
+  select count(*) into c from public.coaching_check_ins where id='50000000-0000-4000-8000-000000000001';
+  if c<>1 then raise exception 'Own coaching check-in hidden'; end if;
+  select count(*) into c from public.coaching_check_ins where id='50000000-0000-4000-8000-000000000002';
+  if c<>0 then raise exception 'Other coaching check-in exposed'; end if;
+  update public.coaching_check_ins set updated_at=now() where id='50000000-0000-4000-8000-000000000002';
+  get diagnostics c=row_count;
+  if c<>0 then raise exception 'Other coaching check-in update allowed'; end if;
+  begin
+    update public.coaching_check_ins set owner_id=owner2 where id='50000000-0000-4000-8000-000000000001';
+    raise exception 'Coaching check-in owner reassignment allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.coaching_check_ins(id,owner_id,profile_id,profile_revision,schema_version,payload,created_at,updated_at)
+    values(gen_random_uuid(),owner1,'40000000-0000-4000-8000-000000000002',1,1,'{}',now(),now());
+    raise exception 'Cross-owner coaching profile reference allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.coaching_profiles set updated_at=now() where profile_id='40000000-0000-4000-8000-000000000001';
+    raise exception 'Immutable coaching profile update allowed';
+  exception when insufficient_privilege then null;
+  end;
+end $test_coaching_rls$;
+
 reset role;
 rollback;
-select 'PASS: two-user RLS read/update/delete isolation, ownership reassignment, cross-owner child insert, and completed-workout delete checks; fixtures rolled back' as result;
+select 'PASS: two-user workout and coaching RLS isolation, immutable profile revisions, ownership boundaries, and completed-workout delete checks; fixtures rolled back' as result;

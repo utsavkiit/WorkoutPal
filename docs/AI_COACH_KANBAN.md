@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-004 is complete; AIC-005 goal cloud sync is in progress. AIC-001 through AIC-003 were previously pushed as `0d62b75`, `aa3be0c`, and `8f5fbbd`. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added local SQLite profile revision and check-in tables, validated hydration, immutable sequential revisions, client-generated identities, repository APIs, atomic durable outbox writes, and owner attachment without requiring sign-in or network access.
+- Current: AIC-004 and AIC-005 are complete; AIC-006 goal UI is in progress. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added and applied the coaching profile/check-in cloud migration with explicit grants, immutable profile revisions, owner-scoped RLS, local outbox push, validated pull/merge, and two-user isolation coverage. Repaired the linked project's accurate 001/002 migration history before applying the new migration.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-004 passes `npm run typecheck`, `npm test` (29/29), `npx expo export --platform ios`, and `git diff --check` on September 13, 2026. Device persistence remains part of AIC-018 end-to-end QA.
-- Blockers: The remote migration ledger mismatch must be inspected and repaired before applying AIC-005 to the linked project; local migration implementation can proceed.
-- Exact next action: Implement AIC-005 migration, sync/merge behavior, and two-user RLS coverage locally, then inspect and safely repair the linked migration ledger before any remote apply.
+- Validation: AIC-005 passes typecheck, 29/29 tests, iOS export, migration parity, and remote transaction-only RLS tests. Supabase advisors report no findings for the new coaching tables; existing warnings remain for legacy RLS performance and leaked-password protection.
+- Blockers: None for AIC-006.
+- Exact next action: Build the accessible My Goals and explicit coaching/history consent UI, persisting every edit as a new local revision.
 
 ## Ready
 
@@ -28,7 +28,7 @@ None.
 
 ## In progress
 
-- **AIC-005 Goal cloud sync:** Add Supabase migration with explicit grants, RLS ownership policies, sync/merge behavior, and two-user RLS tests; after AIC-004. Do not apply remotely until the migration ledger mismatch in the global handoff is resolved.
+- **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004.
 
 ## Verify
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004.
 - **AIC-007 Weekly metrics:** Deterministically calculate timezone-correct review periods, completed sessions, working-set evidence, unit-normalized comparisons, data coverage, and latest included workout. Handle corrections/deletions and sparse weeks; coordinate with WP-005 and WP-024.
 - **AIC-008 Coaching context v1:** Assemble a bounded, versioned, user-scoped context from goals, current routine, deterministic metrics, detailed evidence pointers, prior review decision, and data coverage; after AIC-005 and AIC-007.
 - **AIC-009 Review persistence:** Add local/cloud review storage, immutable revisions, superseded-data state, stable generation uniqueness, validated publishing boundary, RLS tests, and offline sync; after AIC-001 and AIC-008.
@@ -56,6 +55,7 @@ None.
 
 ## Done
 
+- **AIC-005 Goal cloud sync:** Added/applied explicit-grant profile/check-in tables, immutable revision and owner-scoped RLS policies, outbox push plus validated pull/merge, and two-user isolation tests. Repaired migration history first. Evidence: remote RLS pass, migration parity, no new-table advisor findings, typecheck, 29/29 tests, iOS export, and diff check on September 13, 2026.
 - **AIC-004 Goal persistence:** Added offline-first SQLite profile revision/check-in storage, immutable sequential revisions, repository APIs, atomic outbox writes, owner attachment, safe defaults, and validation coverage. Evidence: typecheck, 29/29 tests, iOS export, and diff check pass on September 13, 2026.
 - **AIC-001 Review contract v1:** Added provider-neutral output types, whole-payload validation, generation binding, evidence rules, continuity check-ins, invalid cases, and durable agent guidance. Evidence: typecheck, 14/14 tests, iOS export, and diff check pass on September 12, 2026.
 - **AIC-002 Representative review fixtures:** Added five synthetic input/output journeys, executable contract/evidence-reference checks, minimum-data guidance, and a quality/repetition rubric. Evidence: typecheck, 20/20 tests, and diff check pass on September 12, 2026; no external model run claimed.

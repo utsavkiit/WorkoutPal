@@ -12,11 +12,11 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 through AIC-003 are pushed as `0d62b75`, `aa3be0c`, and `8f5fbbd`, and AIC-004 local persistence is next. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
+- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 through AIC-005 are complete and AIC-006 goal UI is active. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
 - Changes: Added a validated, versioned coaching profile with ranked goals, optional lift targets, training constraints/preferences, explicit history consent, weekly review preferences, and preserved goal revisions. Added durable precedence, consent, and correction semantics. No persistence or cloud changes yet; existing unrelated working-tree changes remain preserved.
 - Validation: AIC-003 passes `npm run typecheck`, `npm test` (27/27), and `git diff --check`. AIC-001's iOS export passed. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
-- Exact next action: Implement AIC-004 local-first profile persistence only. Do not begin remote migration, agent access, or routine proposals until their preceding feature tasks and security boundaries are complete.
-- Prior context: WP-009/WP-010/WP-031 remain in Verify; migration 002 is applied and RLS tests passed previously. Remote migration ledger lists 001/002 as unapplied despite live schema; do not blindly `db push` without repairing ledger. Next feature priority remains WP-001 when product discovery is paused.
+- Exact next action: Implement AIC-006 My Goals and explicit coaching-consent UI. Do not begin agent access or routine proposals until their preceding feature tasks and security boundaries are complete.
+- Prior context: WP-009/WP-010/WP-031 remain in Verify. The remote migration ledger was safely repaired after schema/RLS verification; migrations 001, 002, and the AI profile migration are applied and in parity. Next feature priority remains WP-001 when AI Coach work is paused.
 
 ## Ready
 

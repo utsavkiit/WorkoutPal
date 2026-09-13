@@ -320,7 +320,7 @@ async function enqueueWithDatabase(db: SQLite.SQLiteDatabase, entity: string, en
 export async function enqueue(entity: string, entityId: string, operation: string, payload: unknown) { const db = await database(); await enqueueWithDatabase(db, entity, entityId, operation, payload); }
 async function enqueueRoutine(id: string) { const routine = await getRoutine(id); if (routine) await enqueue('routine', id, 'snapshot', routine); }
 async function enqueueWorkout(id: string) { const workout = await getWorkout(id); if (workout) await enqueue('workout', id, 'snapshot', workout); }
-export async function getOutbox() { const db = await database(); return db.getAllAsync<OutboxRow>('SELECT * FROM outbox ORDER BY created_at LIMIT 50'); }
+export async function getOutbox() { const db = await database(); return db.getAllAsync<OutboxRow>('SELECT * FROM outbox ORDER BY created_at, rowid LIMIT 50'); }
 export async function completeOutbox(id: string) { const db = await database(); await db.runAsync('DELETE FROM outbox WHERE id=?', id); }
 export async function failOutbox(id: string, error: string) { const db = await database(); await db.runAsync('UPDATE outbox SET attempts=attempts+1,last_error=? WHERE id=?', error, id); }
 export async function attachLocalOwner(ownerId: string) {
@@ -403,7 +403,7 @@ export async function saveCoachingCheckIn(checkIn: CoachingCheckInV1): Promise<v
   });
 }
 
-export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null }) {
+export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[] }) {
   const db = await database();
   await db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
@@ -427,6 +427,24 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
     if (bundle.preference) {
       const p=bundle.preference;
       await db.runAsync(`UPDATE preferences SET unit=?,rest_seconds=?,updated_at=? WHERE id='local' AND updated_at < ?`,p.unit,p.rest_seconds,p.updated_at,p.updated_at);
+    }
+    for (const row of bundle.coachingProfiles) {
+      const validation = validateCoachingProfile(row.payload);
+      if (!validation.ok) throw new Error(`Remote coaching profile is invalid: ${validation.errors.join(' ')}`);
+      const profile = validation.value;
+      await db.runAsync(
+        'INSERT OR IGNORE INTO coaching_profiles (revision_id,profile_id,revision,owner_id,payload,effective_at,updated_at) VALUES (?,?,?,?,?,?,?)',
+        `${profile.id}:${profile.revision}`, profile.id, profile.revision, row.owner_id, JSON.stringify(profile), profile.effectiveAt, profile.updatedAt,
+      );
+    }
+    for (const row of bundle.coachingCheckIns) {
+      const validation = validateCoachingCheckIn(row.payload);
+      if (!validation.ok) throw new Error(`Remote coaching check-in is invalid: ${validation.errors.join(' ')}`);
+      const checkIn = validation.value;
+      await db.runAsync(
+        'INSERT INTO coaching_check_ins (id,owner_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_check_ins.updated_at',
+        checkIn.id, row.owner_id, checkIn.profileId, checkIn.profileRevision, JSON.stringify(checkIn), checkIn.createdAt, checkIn.updatedAt,
+      );
     }
   });
 }
