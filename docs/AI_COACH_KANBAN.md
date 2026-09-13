@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-004 and AIC-005 are complete; AIC-006 goal UI is in progress. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added and applied the coaching profile/check-in cloud migration with explicit grants, immutable profile revisions, owner-scoped RLS, local outbox push, validated pull/merge, and two-user isolation coverage. Repaired the linked project's accurate 001/002 migration history before applying the new migration.
+- Current: AIC-006 implementation is complete and awaits physical-iPhone accessibility/interaction verification; AIC-007 weekly metrics is in progress. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added an accessible My Goals screen reachable from Settings with all five supported goal types, minimal constraints, optional detail, explicit separate coaching/history consent, weekly day selection, local timezone capture, and immutable revision saves.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-005 passes typecheck, 29/29 tests, iOS export, migration parity, and remote transaction-only RLS tests. Supabase advisors report no findings for the new coaching tables; existing warnings remain for legacy RLS performance and leaked-password protection.
-- Blockers: None for AIC-006.
-- Exact next action: Build the accessible My Goals and explicit coaching/history consent UI, persisting every edit as a new local revision.
+- Validation: AIC-006 passes typecheck, 29/29 tests, iOS export, and diff check. Physical-iPhone VoiceOver, large-text, keyboard, save/restart, and consent-copy checks remain before Done.
+- Blockers: None for AIC-007; AIC-006 device verification is pending.
+- Exact next action: Implement and test deterministic timezone-correct weekly periods, completed-session/working-set metrics, normalized loads, evidence, and data coverage.
 
 ## Ready
 
@@ -28,11 +28,11 @@ None.
 
 ## In progress
 
-- **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004.
+- **AIC-007 Weekly metrics:** Deterministically calculate timezone-correct review periods, completed sessions, working-set evidence, unit-normalized comparisons, data coverage, and latest included workout. Handle corrections/deletions and sparse weeks; coordinate with WP-005 and WP-024.
 
 ## Verify
 
-None.
+- **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004. Implementation/typecheck/tests/export pass; verify VoiceOver, large text, keyboard flow, offline save/restart, and consent copy on the physical iPhone.
 
 ## Blocked
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-007 Weekly metrics:** Deterministically calculate timezone-correct review periods, completed sessions, working-set evidence, unit-normalized comparisons, data coverage, and latest included workout. Handle corrections/deletions and sparse weeks; coordinate with WP-005 and WP-024.
 - **AIC-008 Coaching context v1:** Assemble a bounded, versioned, user-scoped context from goals, current routine, deterministic metrics, detailed evidence pointers, prior review decision, and data coverage; after AIC-005 and AIC-007.
 - **AIC-009 Review persistence:** Add local/cloud review storage, immutable revisions, superseded-data state, stable generation uniqueness, validated publishing boundary, RLS tests, and offline sync; after AIC-001 and AIC-008.
 - **AIC-010 External agent workflow:** Configure the chosen project-scoped read path and narrow publishing path, weekly trigger, retries, failure visibility, and copyable setup instructions. Unattended MCP must remain read-only; after AIC-009.
