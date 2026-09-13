@@ -1,6 +1,7 @@
 import { Exercise, Routine, UserPreferences, WorkoutSession } from '../types';
 import * as local from './database';
 import { CoachingCheckInV1, CoachingProfileV1 } from '../coaching/goals';
+import { StoredCoachReviewV1 } from '../coaching/reviews';
 
 export interface ExerciseRepository {
   list(search?: string, muscle?: string): Promise<Exercise[]>;
@@ -31,6 +32,10 @@ export interface CoachingRepository {
   saveCheckIn(checkIn: CoachingCheckInV1): Promise<void>;
   weeklyMetrics(at?: Date): ReturnType<typeof local.getWeeklyCoachingMetrics>;
   context(at?: Date): ReturnType<typeof local.getCoachingContext>;
+  reviews(includeArchived?: boolean): ReturnType<typeof local.listCoachReviews>;
+  review(id: string): ReturnType<typeof local.getCoachReview>;
+  saveReview(review: StoredCoachReviewV1): Promise<string>;
+  archiveReview(id: string): Promise<void>;
 }
 
 export const repositories = {
@@ -46,5 +51,9 @@ export const repositories = {
     saveCheckIn: local.saveCoachingCheckIn,
     weeklyMetrics: local.getWeeklyCoachingMetrics,
     context: local.getCoachingContext,
+    reviews: local.listCoachReviews,
+    review: local.getCoachReview,
+    saveReview: local.saveCoachReview,
+    archiveReview: local.archiveCoachReview,
   } satisfies CoachingRepository,
 };

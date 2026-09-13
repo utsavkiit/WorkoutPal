@@ -7,6 +7,7 @@ import { makeId } from './id';
 import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validateCoachingProfile } from '../coaching/goals';
 import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coaching/metrics';
 import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
+import { StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -66,10 +67,18 @@ CREATE TABLE IF NOT EXISTS coaching_check_ins (
   payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
 );
+CREATE TABLE IF NOT EXISTS coach_reviews (
+  id TEXT PRIMARY KEY, owner_id TEXT, generation_key TEXT NOT NULL UNIQUE, payload TEXT NOT NULL,
+  profile_id TEXT NOT NULL, profile_revision INTEGER NOT NULL, context_version INTEGER NOT NULL,
+  period_start TEXT NOT NULL, period_end TEXT NOT NULL, latest_workout_id TEXT,
+  published_at TEXT NOT NULL, archived_at TEXT,
+  FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
+);
 CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
 CREATE INDEX IF NOT EXISTS coaching_profile_latest ON coaching_profiles(profile_id, revision DESC);
 CREATE INDEX IF NOT EXISTS coaching_check_ins_date ON coaching_check_ins(created_at DESC);
+CREATE INDEX IF NOT EXISTS coach_reviews_period ON coach_reviews(period_end DESC, published_at DESC);
 `;
 
 async function initializeDatabaseOnce() {
@@ -333,6 +342,7 @@ export async function attachLocalOwner(ownerId: string) {
     await db.runAsync('UPDATE workout_sessions SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coaching_profiles SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coaching_check_ins SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coach_reviews SET owner_id=? WHERE owner_id IS NULL', ownerId);
   });
 }
 
@@ -420,7 +430,50 @@ export async function getCoachingContext(at = new Date()): Promise<CoachingConte
   return buildCoachingContext({ profile, metrics, workouts, currentRoutine: routines[0] ?? null, checkIns });
 }
 
-export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[] }) {
+export interface CoachReviewListItem { record: StoredCoachReviewV1; archivedAt: string | null }
+
+function parseCoachReview(row: { payload: string; archived_at: string | null }): CoachReviewListItem {
+  const validation = validateStoredCoachReview(JSON.parse(row.payload));
+  if (!validation.ok) throw new Error(`Stored coach review is invalid: ${validation.errors.join(' ')}`);
+  return { record: validation.value, archivedAt: row.archived_at };
+}
+
+export async function listCoachReviews(includeArchived = false): Promise<CoachReviewListItem[]> {
+  const db = await database();
+  const rows = await db.getAllAsync<{ payload: string; archived_at: string | null }>(`SELECT payload,archived_at FROM coach_reviews ${includeArchived ? '' : 'WHERE archived_at IS NULL'} ORDER BY period_end DESC,published_at DESC`);
+  return rows.map(parseCoachReview);
+}
+
+export async function getCoachReview(id: string): Promise<CoachReviewListItem | null> {
+  const db = await database();
+  const row = await db.getFirstAsync<{ payload: string; archived_at: string | null }>('SELECT payload,archived_at FROM coach_reviews WHERE id=?', id);
+  return row ? parseCoachReview(row) : null;
+}
+
+export async function saveCoachReview(record: StoredCoachReviewV1): Promise<string> {
+  const validation = validateStoredCoachReview(record);
+  if (!validation.ok) throw new Error(validation.errors.join(' '));
+  const db = await database();
+  const duplicate = await db.getFirstAsync<{ id: string }>('SELECT id FROM coach_reviews WHERE generation_key=?', record.generationKey);
+  if (duplicate) return duplicate.id;
+  const profile = await db.getFirstAsync('SELECT revision_id FROM coaching_profiles WHERE profile_id=? AND revision=?', record.profileId, record.profileRevision);
+  if (!profile) throw new Error('The review profile revision does not exist locally.');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT INTO coach_reviews (id,owner_id,generation_key,payload,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,published_at,archived_at) VALUES (?,NULL,?,?,?,?,?,?,?,?,?,NULL)', record.id, record.generationKey, JSON.stringify(validation.value), record.profileId, record.profileRevision, record.contextVersion, record.review.periodStart, record.review.periodEnd, record.review.latestWorkoutId, record.publishedAt);
+    await enqueueWithDatabase(db, 'coach_review', record.id, 'insert', validation.value);
+  });
+  return record.id;
+}
+
+export async function archiveCoachReview(id: string): Promise<void> {
+  const db = await database(); const timestamp = now();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE coach_reviews SET archived_at=? WHERE id=?', timestamp, id);
+    await enqueueWithDatabase(db, 'coach_review_archive', id, 'update', { id, archived_at: timestamp });
+  });
+}
+
+export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[] }) {
   const db = await database();
   await db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
@@ -462,6 +515,16 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
         'INSERT INTO coaching_check_ins (id,owner_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_check_ins.updated_at',
         checkIn.id, row.owner_id, checkIn.profileId, checkIn.profileRevision, JSON.stringify(checkIn), checkIn.createdAt, checkIn.updatedAt,
       );
+    }
+    for (const row of bundle.coachReviews) {
+      const validation = validateStoredCoachReview(row.payload);
+      if (!validation.ok) throw new Error(`Remote coach review is invalid: ${validation.errors.join(' ')}`);
+      const review = validation.value;
+      await db.runAsync(
+        'INSERT OR IGNORE INTO coach_reviews (id,owner_id,generation_key,payload,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,published_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        review.id, row.owner_id, review.generationKey, JSON.stringify(review), review.profileId, review.profileRevision, review.contextVersion, review.review.periodStart, review.review.periodEnd, review.review.latestWorkoutId, review.publishedAt, row.archived_at,
+      );
+      if (row.archived_at) await db.runAsync('UPDATE coach_reviews SET archived_at=? WHERE id=? AND (archived_at IS NULL OR archived_at < ?)', row.archived_at, review.id, row.archived_at);
     }
   });
 }
