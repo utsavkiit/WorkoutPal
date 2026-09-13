@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { Routine, WorkoutSession } from '../types';
 import { CoachingCheckInV1, CoachingProfileV1 } from '../coaching/goals';
 import { StoredCoachReviewV1 } from '../coaching/reviews';
+import { CoachingGenerationRequestV1 } from '../coaching/workflow';
 
 const exerciseRow = (e: any, ownerId: string) => ({ id: e.id, owner_id: ownerId, name: e.name, muscle_group: e.muscleGroup, equipment: e.equipment, type: e.type, is_custom: true, archived: false, updated_at: e.updated_at });
 const errorMessage = (error: unknown) => {
@@ -97,6 +98,28 @@ export async function pushPending(session: Session) {
       } else if (item.entity === 'coach_review_archive') {
         const { error } = await supabase.from('coach_reviews').update({ archived_at: payload.archived_at }).eq('id', item.entity_id).eq('owner_id', session.user.id);
         if (error) throw error;
+      } else if (item.entity === 'coaching_request') {
+        const request = payload as CoachingGenerationRequestV1;
+        const { error } = await supabase.from('coaching_generation_requests').upsert({
+          id: request.id,
+          owner_id: session.user.id,
+          generation_key: request.generationKey,
+          request_version: request.requestVersion,
+          context_version: request.context.contextVersion,
+          profile_id: request.context.profile.id,
+          profile_revision: request.context.profile.revision,
+          period_start: request.context.metrics.period.startDate,
+          period_end: request.context.metrics.period.endDate,
+          context: request.context,
+          status: 'pending',
+          attempts: 0,
+          requested_at: request.requestedAt,
+          updated_at: request.updatedAt,
+        }, { onConflict: 'owner_id,generation_key', ignoreDuplicates: true });
+        if (error) throw error;
+      } else if (item.entity === 'coaching_request_retry') {
+        const { error } = await supabase.from('coaching_generation_requests').update({ status: 'pending', next_attempt_at: null, last_error: null, updated_at: payload.updated_at }).eq('id', item.entity_id).eq('owner_id', session.user.id).neq('status', 'ready');
+        if (error) throw error;
       }
       await completeOutbox(item.id);
     } catch (error) {
@@ -107,7 +130,7 @@ export async function pushPending(session: Session) {
     }
   }
   if (!failed) {
-    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews]=await Promise.all([
+    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests]=await Promise.all([
       supabase.from('exercises').select('*').eq('owner_id',session.user.id),
       supabase.from('routines').select('*,routine_exercises(*)').eq('owner_id',session.user.id),
       supabase.from('workout_sessions').select('*,workout_exercises(*,workout_sets(*))').eq('owner_id',session.user.id).eq('status','completed'),
@@ -115,13 +138,14 @@ export async function pushPending(session: Session) {
       supabase.from('coaching_profiles').select('*').eq('owner_id',session.user.id).order('effective_at', { ascending: false }),
       supabase.from('coaching_check_ins').select('*').eq('owner_id',session.user.id).order('created_at', { ascending: false }),
       supabase.from('coach_reviews').select('*').eq('owner_id',session.user.id).order('period_end', { ascending: false }),
+      supabase.from('coaching_generation_requests').select('*').eq('owner_id',session.user.id).order('requested_at', { ascending: false }),
     ]);
-    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error;
+    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error;
     if (pullError) {
       failed=true;
       console.error('[sync] pull failed:', pullError.message);
     } else {
-      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[]});
+      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[]});
       console.info('[sync] Supabase push and pull completed', {
         workouts: workouts.data?.length ?? 0,
         workoutExercises: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises?.length ?? 0), 0),

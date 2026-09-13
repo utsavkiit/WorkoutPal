@@ -12,14 +12,20 @@ insert into public.workout_sessions(id,owner_id,name,status,started_at,ended_at,
   ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','RLS fixture completed','completed',now(),now(),now()),
   ('30000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','RLS fixture completed','completed',now(),now(),now());
 insert into public.coaching_profiles(profile_id,revision,owner_id,schema_version,payload,effective_at,updated_at) values
-  ('40000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000001',1,'{}',now(),now()),
-  ('40000000-0000-4000-8000-000000000002',1,'10000000-0000-4000-8000-000000000002',1,'{}',now(),now());
+  ('40000000-0000-4000-8000-000000000001',1,'10000000-0000-4000-8000-000000000001',1,'{"id":"40000000-0000-4000-8000-000000000001","revision":1,"consent":{"coachingEnabled":true,"shareWorkoutHistory":true}}',now(),now()),
+  ('40000000-0000-4000-8000-000000000002',1,'10000000-0000-4000-8000-000000000002',1,'{"id":"40000000-0000-4000-8000-000000000002","revision":1,"consent":{"coachingEnabled":true,"shareWorkoutHistory":true}}',now(),now());
 insert into public.coaching_check_ins(id,owner_id,profile_id,profile_revision,schema_version,payload,created_at,updated_at) values
   ('50000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',1,1,'{}',now(),now()),
   ('50000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000002',1,1,'{}',now(),now());
 insert into public.coach_reviews(id,owner_id,generation_key,storage_version,contract_version,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,payload,published_at) values
   ('60000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','rls-owner-1',1,1,'40000000-0000-4000-8000-000000000001',1,1,'2026-09-01','2026-09-07',null,jsonb_build_object('storageVersion',1,'id','60000000-0000-4000-8000-000000000001','revision',1,'profileId','40000000-0000-4000-8000-000000000001','profileRevision',1,'contextVersion',1,'generationKey','rls-owner-1','review',jsonb_build_object('contractVersion',1,'generationKey','rls-owner-1','periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'observations','[]'::jsonb,'contextUsed','[]'::jsonb)),now()),
   ('60000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','rls-owner-2',1,1,'40000000-0000-4000-8000-000000000002',1,1,'2026-09-01','2026-09-07',null,jsonb_build_object('storageVersion',1,'id','60000000-0000-4000-8000-000000000002','revision',1,'profileId','40000000-0000-4000-8000-000000000002','profileRevision',1,'contextVersion',1,'generationKey','rls-owner-2','review',jsonb_build_object('contractVersion',1,'generationKey','rls-owner-2','periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'observations','[]'::jsonb,'contextUsed','[]'::jsonb)),now());
+insert into public.coaching_generation_requests(id,owner_id,generation_key,request_version,context_version,profile_id,profile_revision,period_start,period_end,context,status,attempts,requested_at,updated_at) values
+  ('70000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','request-owner-1',1,1,'40000000-0000-4000-8000-000000000001',1,'2026-09-01','2026-09-07',jsonb_build_object('generationKey','request-owner-1','contextVersion',1,'profile',jsonb_build_object('id','40000000-0000-4000-8000-000000000001','revision',1)),'pending',0,now(),now()),
+  ('70000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','request-owner-2',1,1,'40000000-0000-4000-8000-000000000002',1,'2026-09-01','2026-09-07',jsonb_build_object('generationKey','request-owner-2','contextVersion',1,'profile',jsonb_build_object('id','40000000-0000-4000-8000-000000000002','revision',1)),'pending',0,now(),now());
+insert into public.coaching_agent_credentials(owner_id,token_hash,created_at,updated_at) values
+  ('10000000-0000-4000-8000-000000000001',repeat('a',64),now(),now()),
+  ('10000000-0000-4000-8000-000000000002',repeat('b',64),now(),now());
 set local role authenticated;
 do $test$
 declare n integer; t text; own_id uuid; other_id uuid; own_user uuid; other_user uuid; c integer;
@@ -142,6 +148,31 @@ begin
   end;
 end $test_review_rls$;
 
+do $test_agent_workflow_rls$
+declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  select count(*) into c from public.coaching_generation_requests where id='70000000-0000-4000-8000-000000000001';
+  if c<>1 then raise exception 'Own coaching request hidden'; end if;
+  select count(*) into c from public.coaching_generation_requests where id='70000000-0000-4000-8000-000000000002';
+  if c<>0 then raise exception 'Other coaching request exposed'; end if;
+  begin
+    update public.coaching_generation_requests set owner_id=owner2 where id='70000000-0000-4000-8000-000000000001';
+    raise exception 'Coaching request owner reassignment allowed';
+  exception when insufficient_privilege then null;
+  end;
+  select count(*) into c from public.coaching_agent_credentials where owner_id=owner1;
+  if c<>1 then raise exception 'Own coaching credential hidden'; end if;
+  select count(*) into c from public.coaching_agent_credentials where owner_id=owner2;
+  if c<>0 then raise exception 'Other coaching credential exposed'; end if;
+  begin
+    update public.coaching_agent_credentials set owner_id=owner2 where owner_id=owner1;
+    raise exception 'Coaching credential owner reassignment allowed';
+  exception when insufficient_privilege then null;
+  end;
+end $test_agent_workflow_rls$;
+
 reset role;
 rollback;
-select 'PASS: two-user workout and coaching RLS isolation, immutable profile revisions, ownership boundaries, and completed-workout delete checks; fixtures rolled back' as result;
+select 'PASS: two-user workout, coaching, review, request, and credential RLS isolation; immutable records and ownership boundaries hold; fixtures rolled back' as result;

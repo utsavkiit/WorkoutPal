@@ -8,6 +8,7 @@ import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validate
 import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coaching/metrics';
 import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
 import { StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
+import { CoachingGenerationRequestV1, validateGenerationRequest } from '../coaching/workflow';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -74,11 +75,17 @@ CREATE TABLE IF NOT EXISTS coach_reviews (
   published_at TEXT NOT NULL, archived_at TEXT,
   FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
 );
+CREATE TABLE IF NOT EXISTS coaching_generation_requests (
+  id TEXT PRIMARY KEY, owner_id TEXT, generation_key TEXT NOT NULL UNIQUE, context TEXT NOT NULL,
+  status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, last_error TEXT,
+  review_id TEXT, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
 CREATE INDEX IF NOT EXISTS coaching_profile_latest ON coaching_profiles(profile_id, revision DESC);
 CREATE INDEX IF NOT EXISTS coaching_check_ins_date ON coaching_check_ins(created_at DESC);
 CREATE INDEX IF NOT EXISTS coach_reviews_period ON coach_reviews(period_end DESC, published_at DESC);
+CREATE INDEX IF NOT EXISTS coaching_requests_status ON coaching_generation_requests(status, requested_at DESC);
 `;
 
 async function initializeDatabaseOnce() {
@@ -343,6 +350,7 @@ export async function attachLocalOwner(ownerId: string) {
     await db.runAsync('UPDATE coaching_profiles SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coaching_check_ins SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coach_reviews SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coaching_generation_requests SET owner_id=? WHERE owner_id IS NULL', ownerId);
   });
 }
 
@@ -473,7 +481,47 @@ export async function archiveCoachReview(id: string): Promise<void> {
   });
 }
 
-export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[] }) {
+function parseGenerationRequest(row: { context: string; id: string; generation_key: string; status: CoachingGenerationRequestV1['status']; attempts: number; requested_at: string; updated_at: string; next_attempt_at: string | null; last_error: string | null; review_id: string | null }): CoachingGenerationRequestV1 {
+  const value = { requestVersion: 1, id: row.id, generationKey: row.generation_key, context: JSON.parse(row.context), status: row.status, attempts: row.attempts, requestedAt: row.requested_at, updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, lastError: row.last_error, reviewId: row.review_id } as CoachingGenerationRequestV1;
+  const validation = validateGenerationRequest(value);
+  if (!validation.ok) throw new Error(`Stored generation request is invalid: ${validation.errors.join(' ')}`);
+  return validation.value;
+}
+
+export async function listCoachingGenerationRequests(): Promise<CoachingGenerationRequestV1[]> {
+  const db = await database();
+  const rows = await db.getAllAsync<Parameters<typeof parseGenerationRequest>[0]>('SELECT * FROM coaching_generation_requests ORDER BY requested_at DESC');
+  return rows.map(parseGenerationRequest);
+}
+
+export async function requestCoachReview(at = new Date()): Promise<CoachingGenerationRequestV1> {
+  const context = await getCoachingContext(at);
+  if (!context) throw new Error('Enable Coach and workout-history access before requesting a review.');
+  const db = await database();
+  const existing = await db.getFirstAsync<Parameters<typeof parseGenerationRequest>[0]>('SELECT * FROM coaching_generation_requests WHERE generation_key=?', context.generationKey);
+  if (existing) return parseGenerationRequest(existing);
+  const timestamp = now();
+  const request: CoachingGenerationRequestV1 = { requestVersion: 1, id: makeId(), generationKey: context.generationKey, context, status: 'pending', attempts: 0, requestedAt: timestamp, updatedAt: timestamp, nextAttemptAt: null, lastError: null, reviewId: null };
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT INTO coaching_generation_requests (id,owner_id,generation_key,context,status,attempts,next_attempt_at,last_error,review_id,requested_at,updated_at) VALUES (?,NULL,?,?,?,0,NULL,NULL,NULL,?,?)', request.id, request.generationKey, JSON.stringify(context), request.status, request.requestedAt, request.updatedAt);
+    await enqueueWithDatabase(db, 'coaching_request', request.id, 'insert', request);
+  });
+  return request;
+}
+
+export async function retryCoachingGenerationRequest(id: string): Promise<void> {
+  const db = await database(); const timestamp = now();
+  const row = await db.getFirstAsync<Parameters<typeof parseGenerationRequest>[0]>('SELECT * FROM coaching_generation_requests WHERE id=?', id);
+  if (!row) throw new Error('Generation request not found.');
+  const request = parseGenerationRequest(row);
+  if (request.status === 'ready') return;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("UPDATE coaching_generation_requests SET status='pending',next_attempt_at=NULL,last_error=NULL,updated_at=? WHERE id=?", timestamp, id);
+    await enqueueWithDatabase(db, 'coaching_request_retry', id, 'update', { id, updated_at: timestamp });
+  });
+}
+
+export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[] }) {
   const db = await database();
   await db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
@@ -525,6 +573,12 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
         review.id, row.owner_id, review.generationKey, JSON.stringify(review), review.profileId, review.profileRevision, review.contextVersion, review.review.periodStart, review.review.periodEnd, review.review.latestWorkoutId, review.publishedAt, row.archived_at,
       );
       if (row.archived_at) await db.runAsync('UPDATE coach_reviews SET archived_at=? WHERE id=? AND (archived_at IS NULL OR archived_at < ?)', row.archived_at, review.id, row.archived_at);
+    }
+    for (const row of bundle.coachingRequests) {
+      const value = { requestVersion: row.request_version, id: row.id, generationKey: row.generation_key, context: row.context, status: row.status, attempts: row.attempts, requestedAt: row.requested_at, updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, lastError: row.last_error, reviewId: row.review_id };
+      const validation = validateGenerationRequest(value);
+      if (!validation.ok) throw new Error(`Remote generation request is invalid: ${validation.errors.join(' ')}`);
+      await db.runAsync('INSERT INTO coaching_generation_requests (id,owner_id,generation_key,context,status,attempts,next_attempt_at,last_error,review_id,requested_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,status=excluded.status,attempts=excluded.attempts,next_attempt_at=excluded.next_attempt_at,last_error=excluded.last_error,review_id=excluded.review_id,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_generation_requests.updated_at', row.id, row.owner_id, row.generation_key, JSON.stringify(row.context), row.status, row.attempts, row.next_attempt_at, row.last_error, row.review_id, row.requested_at, row.updated_at);
     }
   });
 }

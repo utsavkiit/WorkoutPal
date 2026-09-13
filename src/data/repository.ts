@@ -36,6 +36,9 @@ export interface CoachingRepository {
   review(id: string): ReturnType<typeof local.getCoachReview>;
   saveReview(review: StoredCoachReviewV1): Promise<string>;
   archiveReview(id: string): Promise<void>;
+  requests(): ReturnType<typeof local.listCoachingGenerationRequests>;
+  requestReview(at?: Date): ReturnType<typeof local.requestCoachReview>;
+  retryRequest(id: string): Promise<void>;
 }
 
 export const repositories = {
@@ -55,5 +58,8 @@ export const repositories = {
     review: local.getCoachReview,
     saveReview: local.saveCoachReview,
     archiveReview: local.archiveCoachReview,
+    requests: local.listCoachingGenerationRequests,
+    requestReview: local.requestCoachReview,
+    retryRequest: local.retryCoachingGenerationRequest,
   } satisfies CoachingRepository,
 };

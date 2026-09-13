@@ -152,6 +152,7 @@ export default function GoalsScreen() {
       {weeklyEnabled && <><FieldLabel>Review day</FieldLabel><View style={styles.wrap}>{dayLabels.map((label, index) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: reviewDay === index }} key={label} onPress={() => setReviewDay(index as typeof reviewDay)} style={[styles.day, { backgroundColor: reviewDay === index ? t.accent : t.elevated }]}><Text style={{ color: reviewDay === index ? '#07150C' : t.text, fontWeight: '700' }}>{label}</Text></Pressable>)}</View></>}
     </Card>
     <PrimaryButton title={saving ? 'Saving…' : existing ? 'Save new revision' : 'Save goals'} disabled={saving} onPress={save}/>
+    <PrimaryButton kind="secondary" title="External agent setup" onPress={() => router.push('/coach/setup')}/>
     {existing && <Text style={[styles.revision, { color: t.secondary }]}>Current revision {existing.revision}. Earlier reviews keep the goal revision they used.</Text>}
   </ScrollView><ExercisePicker visible={pickerVisible} onClose={() => setPickerVisible(false)} onSelect={(item) => { setExercise(item); setPickerVisible(false); }}/></Screen>;
 }

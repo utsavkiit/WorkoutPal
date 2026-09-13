@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-009 is complete; AIC-010 external agent workflow is in progress. AIC-006 awaits physical-iPhone verification. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added contract- and context-validated immutable review records, evidence allowlisting, local SQLite storage/outbox/archive, stable generation idempotency, correction-driven superseded detection, cloud schema constraints, explicit grants, owner-scoped RLS, and validated pull/merge.
+- Current: AIC-010 is complete; AIC-011 review UI is in progress. AIC-006 awaits physical-iPhone verification. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added local-first generation requests, durable sync and manual retry state, a live narrow `coaching-agent` Edge endpoint, revocable hashed agent tokens, bounded retries/stale-claim recovery, server validation/evidence allowlisting, idempotent publication, agent setup UI, and copyable setup guidance. The service-role key remains server-only.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-009 passes typecheck, 38/38 tests, diff check, remote migration application, transaction-only two-user RLS tests, and security advisors with only the pre-existing leaked-password warning.
-- Blockers: None for AIC-010; AIC-006 device verification is pending.
-- Exact next action: Implement a user-scoped generation request/publishing workflow with read-only unattended context access, retry/failure state, and copyable external-agent setup instructions.
+- Validation: AIC-010 passes typecheck, 40/40 tests, iOS export, migration parity, remote RLS tests, and security advisors. Edge Function v2 is active; an isolated live fixture verified token rejection, context claim, invalid-output rejection, valid publication, duplicate idempotency, ready state, and cascade cleanup.
+- Blockers: None for AIC-011; AIC-006 device verification is pending.
+- Exact next action: Add the Coach surface, structured review/archive detail, evidence links, confidence/limitations/context labels, and visible pending/delayed/failed retry states with offline reading.
 
 ## Ready
 
@@ -28,7 +28,7 @@ None.
 
 ## In progress
 
-- **AIC-010 External agent workflow:** Configure the chosen project-scoped read path and narrow publishing path, weekly trigger, retries, failure visibility, and copyable setup instructions. Unattended MCP must remain read-only; after AIC-009.
+- **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009.
 
 ## Verify
 
@@ -40,7 +40,6 @@ None.
 
 ## Backlog
 
-- **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009.
 - **AIC-012 Coaching feedback:** Persist lightweight usefulness/tone feedback and changed constraints locally first, then sync for the next context; after AIC-011.
 - **AIC-013 Routine proposal contract:** Define supported routine fields, per-change rationale, safety constraints, source routine version, conflict detection, and invalid-output cases; after WP-013.
 - **AIC-014 Proposal persistence and sync:** Store pending/accepted/dismissed proposals with immutable source data, RLS, idempotency, and offline availability; after AIC-013 and AIC-009.
@@ -51,6 +50,7 @@ None.
 
 ## Done
 
+- **AIC-010 External agent workflow:** Added synced generation requests, revocable hashed narrow tokens, deployed agent endpoint, retry/failure/idempotency behavior, strict generation/evidence publishing, setup UI, and operational guidance. Evidence: live isolated endpoint journey, active Function v2, remote RLS/advisors, migration parity, typecheck, 40/40 tests, iOS export, and diff check on September 13, 2026.
 - **AIC-009 Review persistence:** Added immutable local/cloud review records, context/evidence validation, stable generation idempotency, superseded detection, offline outbox/archive, schema checks, explicit grants, RLS, and validated pull/merge. Evidence: typecheck, 38/38 tests, diff check, remote migration and two-user RLS pass, and no new security-advisor findings on September 13, 2026.
 - **AIC-008 Coaching context v1:** Added a consent-gated, provider-neutral, bounded context with goal/routine versions, deterministic metrics, detailed evidence, check-ins, prior-decision slot, truncation disclosure, trust labeling, and correction-sensitive generation keys. Evidence: typecheck, 35/35 tests, and diff check on September 13, 2026.
 - **AIC-007 Weekly metrics:** Added DST-safe completed local weeks, completed-session/working-set metrics, per-exercise mixed-unit normalization, evidence IDs, coverage/comparability, latest workout, and deterministic review-kind selection. Evidence: typecheck, 32/32 tests, and diff check on September 13, 2026.
