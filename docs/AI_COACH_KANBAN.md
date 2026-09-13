@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-011 implementation is complete and awaits physical-iPhone verification; AIC-012 coaching feedback is in progress. AIC-006 also awaits device verification. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added a Coach tab and Workout-screen card with data coverage, consent/offline states, request/retry controls, pending/processing/delayed/failed visibility, current/superseded labels, structured review detail, history evidence links, confidence/limitations/context disclosure, archive controls, and offline local reading.
+- Current: AIC-012 is complete; AIC-016 weekly scheduling is in progress as the next eligible task. AIC-006/AIC-011 await physical-iPhone verification. AIC-013–AIC-015 remain dependency-gated by WP-013–WP-015. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added local-first usefulness/tone/changed-constraint feedback, review UI controls, cloud sync/RLS, and next-context inclusion. Routine, check-in, and feedback changes now alter the context generation fingerprint to prevent stale regeneration.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-011 passes typecheck, 40/40 tests, iOS export, and diff check. Physical-iPhone navigation, VoiceOver, large-text, offline archive, and state-transition checks remain before Done.
-- Blockers: None for AIC-012; AIC-006/AIC-011 device verification is pending.
-- Exact next action: Add local-first usefulness/tone feedback and optional constraint-change check-ins, then sync them into the next coaching context.
+- Validation: AIC-012 passes typecheck, 43/43 tests, iOS export, migration parity, remote two-user RLS tests, security advisors, and diff check.
+- Blockers: AIC-013/AIC-015 wait on the routine target tasks WP-013–WP-015. AIC-006/AIC-011 device verification is pending; none blocks AIC-016.
+- Exact next action: Implement automatic preferred-day scheduling, duplicate prevention, notification opt-in, delayed/offline behavior, and lifecycle checks without blocking workout logging.
 
 ## Ready
 
@@ -28,7 +28,7 @@ None.
 
 ## In progress
 
-- **AIC-012 Coaching feedback:** Persist lightweight usefulness/tone feedback and changed constraints locally first, then sync for the next context; after AIC-011.
+- **AIC-016 Weekly scheduling:** Implement preferred review day/timezone, opt-in notification, duplicate prevention, delayed/offline behavior, retries, and failure visibility; after AIC-010.
 
 ## Verify
 
@@ -44,12 +44,12 @@ None.
 - **AIC-013 Routine proposal contract:** Define supported routine fields, per-change rationale, safety constraints, source routine version, conflict detection, and invalid-output cases; after WP-013.
 - **AIC-014 Proposal persistence and sync:** Store pending/accepted/dismissed proposals with immutable source data, RLS, idempotency, and offline availability; after AIC-013 and AIC-009.
 - **AIC-015 Proposal comparison and adoption:** Show before/after changes and accept/edit/dismiss. Preserve the prior routine, never change an active workout, and prevent duplicate or stale application; after AIC-014 and WP-015.
-- **AIC-016 Weekly scheduling:** Implement preferred review day/timezone, opt-in notification, duplicate prevention, delayed/offline behavior, retries, and failure visibility; after AIC-010.
 - **AIC-017 Security and privacy review:** Threat-model agent credentials, prompt injection from stored text, data minimization, consent, retention/deletion, external context, auditability, and cross-user access. Run advisors and all ownership tests before rollout.
 - **AIC-018 End-to-end QA:** Validate offline logging independence, sync recovery, corrected/deleted history, sparse weeks, week/DST boundaries, duplicate runs, invalid agent output, stale routines, accessibility, and physical-iPhone behavior.
 
 ## Done
 
+- **AIC-012 Coaching feedback:** Added local-first usefulness/tone/constraint feedback, review controls, cloud sync/RLS, and next-context generation-key binding. Evidence: typecheck, 43/43 tests, iOS export, migration parity, remote RLS/advisors, and diff check on September 13, 2026.
 - **AIC-010 External agent workflow:** Added synced generation requests, revocable hashed narrow tokens, deployed agent endpoint, retry/failure/idempotency behavior, strict generation/evidence publishing, setup UI, and operational guidance. Evidence: live isolated endpoint journey, active Function v2, remote RLS/advisors, migration parity, typecheck, 40/40 tests, iOS export, and diff check on September 13, 2026.
 - **AIC-009 Review persistence:** Added immutable local/cloud review records, context/evidence validation, stable generation idempotency, superseded detection, offline outbox/archive, schema checks, explicit grants, RLS, and validated pull/merge. Evidence: typecheck, 38/38 tests, diff check, remote migration and two-user RLS pass, and no new security-advisor findings on September 13, 2026.
 - **AIC-008 Coaching context v1:** Added a consent-gated, provider-neutral, bounded context with goal/routine versions, deterministic metrics, detailed evidence, check-ins, prior-decision slot, truncation disclosure, trust labeling, and correction-sensitive generation keys. Evidence: typecheck, 35/35 tests, and diff check on September 13, 2026.

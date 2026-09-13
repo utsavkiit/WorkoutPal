@@ -32,3 +32,11 @@ test('refuses context without explicit history consent', () => {
   const disabled = profile(); disabled.consent.shareWorkoutHistory = false; disabled.consent.coachingEnabled = false; disabled.weeklyReview.enabled = false;
   assert.throws(() => buildCoachingContext({ profile: disabled, metrics: calculateWeeklyCoachingMetrics([], disabled), workouts: [], currentRoutine: null }), /explicit workout-history consent/);
 });
+
+test('generation key changes when feedback changes the next coaching context', () => {
+  const metrics = calculateWeeklyCoachingMetrics([workout(0)], profile(), new Date('2026-09-13T12:00:00.000Z'));
+  const base = { profile: profile(), metrics, workouts: [workout(0)], currentRoutine: null };
+  const before = buildCoachingContext(base).generationKey;
+  const after = buildCoachingContext({ ...base, priorReviewDecision: { feedbackId: 'feedback', reviewId: 'review', usefulness: 'not_helpful', tone: 'too_direct', note: 'Only two days next week.', updatedAt: '2026-09-13T13:00:00.000Z' } }).generationKey;
+  assert.notEqual(before, after);
+});

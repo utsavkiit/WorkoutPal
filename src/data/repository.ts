@@ -2,6 +2,7 @@ import { Exercise, Routine, UserPreferences, WorkoutSession } from '../types';
 import * as local from './database';
 import { CoachingCheckInV1, CoachingProfileV1 } from '../coaching/goals';
 import { StoredCoachReviewV1 } from '../coaching/reviews';
+import { CoachReviewFeedbackV1 } from '../coaching/feedback';
 
 export interface ExerciseRepository {
   list(search?: string, muscle?: string): Promise<Exercise[]>;
@@ -39,6 +40,8 @@ export interface CoachingRepository {
   requests(): ReturnType<typeof local.listCoachingGenerationRequests>;
   requestReview(at?: Date): ReturnType<typeof local.requestCoachReview>;
   retryRequest(id: string): Promise<void>;
+  feedback(): ReturnType<typeof local.listCoachReviewFeedback>;
+  saveFeedback(feedback: CoachReviewFeedbackV1): Promise<void>;
 }
 
 export const repositories = {
@@ -61,5 +64,7 @@ export const repositories = {
     requests: local.listCoachingGenerationRequests,
     requestReview: local.requestCoachReview,
     retryRequest: local.retryCoachingGenerationRequest,
+    feedback: local.listCoachReviewFeedback,
+    saveFeedback: local.saveCoachReviewFeedback,
   } satisfies CoachingRepository,
 };

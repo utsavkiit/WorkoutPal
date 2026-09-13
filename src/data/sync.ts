@@ -6,6 +6,7 @@ import { Routine, WorkoutSession } from '../types';
 import { CoachingCheckInV1, CoachingProfileV1 } from '../coaching/goals';
 import { StoredCoachReviewV1 } from '../coaching/reviews';
 import { CoachingGenerationRequestV1 } from '../coaching/workflow';
+import { CoachReviewFeedbackV1 } from '../coaching/feedback';
 
 const exerciseRow = (e: any, ownerId: string) => ({ id: e.id, owner_id: ownerId, name: e.name, muscle_group: e.muscleGroup, equipment: e.equipment, type: e.type, is_custom: true, archived: false, updated_at: e.updated_at });
 const errorMessage = (error: unknown) => {
@@ -120,6 +121,10 @@ export async function pushPending(session: Session) {
       } else if (item.entity === 'coaching_request_retry') {
         const { error } = await supabase.from('coaching_generation_requests').update({ status: 'pending', next_attempt_at: null, last_error: null, updated_at: payload.updated_at }).eq('id', item.entity_id).eq('owner_id', session.user.id).neq('status', 'ready');
         if (error) throw error;
+      } else if(item.entity==='coach_review_feedback'){
+        const feedback=payload as CoachReviewFeedbackV1;
+        const {error}=await supabase.from('coach_review_feedback').upsert({id:feedback.id,owner_id:session.user.id,review_id:feedback.reviewId,profile_id:feedback.profileId,profile_revision:feedback.profileRevision,feedback_version:feedback.feedbackVersion,payload:feedback,created_at:feedback.createdAt,updated_at:feedback.updatedAt},{onConflict:'owner_id,review_id'});
+        if(error)throw error;
       }
       await completeOutbox(item.id);
     } catch (error) {
@@ -130,7 +135,7 @@ export async function pushPending(session: Session) {
     }
   }
   if (!failed) {
-    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests]=await Promise.all([
+    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests,coachFeedback]=await Promise.all([
       supabase.from('exercises').select('*').eq('owner_id',session.user.id),
       supabase.from('routines').select('*,routine_exercises(*)').eq('owner_id',session.user.id),
       supabase.from('workout_sessions').select('*,workout_exercises(*,workout_sets(*))').eq('owner_id',session.user.id).eq('status','completed'),
@@ -139,13 +144,14 @@ export async function pushPending(session: Session) {
       supabase.from('coaching_check_ins').select('*').eq('owner_id',session.user.id).order('created_at', { ascending: false }),
       supabase.from('coach_reviews').select('*').eq('owner_id',session.user.id).order('period_end', { ascending: false }),
       supabase.from('coaching_generation_requests').select('*').eq('owner_id',session.user.id).order('requested_at', { ascending: false }),
+      supabase.from('coach_review_feedback').select('*').eq('owner_id',session.user.id).order('updated_at',{ascending:false}),
     ]);
-    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error;
+    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error??coachFeedback.error;
     if (pullError) {
       failed=true;
       console.error('[sync] pull failed:', pullError.message);
     } else {
-      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[]});
+      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[],coachFeedback:coachFeedback.data??[]});
       console.info('[sync] Supabase push and pull completed', {
         workouts: workouts.data?.length ?? 0,
         workoutExercises: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises?.length ?? 0), 0),

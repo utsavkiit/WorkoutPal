@@ -6,10 +6,12 @@ export const COACHING_CONTEXT_VERSION = 1 as const;
 export const MAX_CONTEXT_WORKOUTS = 24;
 
 export interface PriorReviewDecision {
+  feedbackId: string;
   reviewId: string;
   usefulness: 'helpful' | 'not_helpful' | 'not_rated';
   tone: 'too_gentle' | 'right' | 'too_direct' | 'not_rated';
   note: string | null;
+  updatedAt: string;
 }
 
 export interface CoachingContextV1 {
@@ -77,6 +79,7 @@ export function buildCoachingContext(input: {
   const included = eligible.slice(0, MAX_CONTEXT_WORKOUTS);
   const checkIns = input.profile.consent.includeCheckIns ? (input.checkIns ?? []).slice(0, 4) : [];
   const historyFingerprint = included.map((workout) => `${workout.id}:${workout.updatedAt}`).sort().join('|');
+  const supplementalFingerprint = JSON.stringify({ routineVersion: input.currentRoutine?.updatedAt ?? null, checkIns: checkIns.map((item) => [item.id, item.updatedAt]), priorReviewDecision: input.priorReviewDecision ?? null });
   const generationKey = [
     `coach-v${COACHING_CONTEXT_VERSION}`,
     input.profile.id,
@@ -84,7 +87,7 @@ export function buildCoachingContext(input: {
     input.metrics.period.startDate,
     input.metrics.period.endDate,
     input.metrics.latestWorkoutId ?? 'none',
-    checksum(historyFingerprint),
+    checksum(`${historyFingerprint}|${supplementalFingerprint}`),
   ].join(':');
   return {
     contextVersion: COACHING_CONTEXT_VERSION,

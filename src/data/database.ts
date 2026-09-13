@@ -9,6 +9,7 @@ import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coac
 import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
 import { StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
 import { CoachingGenerationRequestV1, validateGenerationRequest } from '../coaching/workflow';
+import { CoachReviewFeedbackV1, validateCoachReviewFeedback } from '../coaching/feedback';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -80,12 +81,19 @@ CREATE TABLE IF NOT EXISTS coaching_generation_requests (
   status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, last_error TEXT,
   review_id TEXT, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS coach_review_feedback (
+  id TEXT PRIMARY KEY, owner_id TEXT, review_id TEXT NOT NULL UNIQUE, profile_id TEXT NOT NULL,
+  profile_revision INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  FOREIGN KEY(review_id) REFERENCES coach_reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
+);
 CREATE INDEX IF NOT EXISTS history_date ON workout_sessions(ended_at DESC);
 CREATE INDEX IF NOT EXISTS sets_exercise ON workout_sets(workout_exercise_id, set_number);
 CREATE INDEX IF NOT EXISTS coaching_profile_latest ON coaching_profiles(profile_id, revision DESC);
 CREATE INDEX IF NOT EXISTS coaching_check_ins_date ON coaching_check_ins(created_at DESC);
 CREATE INDEX IF NOT EXISTS coach_reviews_period ON coach_reviews(period_end DESC, published_at DESC);
 CREATE INDEX IF NOT EXISTS coaching_requests_status ON coaching_generation_requests(status, requested_at DESC);
+CREATE INDEX IF NOT EXISTS coach_feedback_date ON coach_review_feedback(updated_at DESC);
 `;
 
 async function initializeDatabaseOnce() {
@@ -351,6 +359,7 @@ export async function attachLocalOwner(ownerId: string) {
     await db.runAsync('UPDATE coaching_check_ins SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coach_reviews SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coaching_generation_requests SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coach_review_feedback SET owner_id=? WHERE owner_id IS NULL', ownerId);
   });
 }
 
@@ -434,8 +443,9 @@ export async function getCoachingContext(at = new Date()): Promise<CoachingConte
   if (!profile || !profile.consent.coachingEnabled || !profile.consent.shareWorkoutHistory) return null;
   const workouts = await listHistory();
   const metrics = calculateWeeklyCoachingMetrics(workouts, profile, at);
-  const [routines, checkIns] = await Promise.all([listRoutines(), listCoachingCheckIns(profile.id)]);
-  return buildCoachingContext({ profile, metrics, workouts, currentRoutine: routines[0] ?? null, checkIns });
+  const [routines, checkIns, feedback] = await Promise.all([listRoutines(), listCoachingCheckIns(profile.id), listCoachReviewFeedback()]);
+  const latestFeedback=feedback[0]??null;
+  return buildCoachingContext({ profile, metrics, workouts, currentRoutine: routines[0] ?? null, checkIns, priorReviewDecision:latestFeedback?{feedbackId:latestFeedback.id,reviewId:latestFeedback.reviewId,usefulness:latestFeedback.usefulness,tone:latestFeedback.tone,note:latestFeedback.changedConstraints,updatedAt:latestFeedback.updatedAt}:null });
 }
 
 export interface CoachReviewListItem { record: StoredCoachReviewV1; archivedAt: string | null }
@@ -521,7 +531,11 @@ export async function retryCoachingGenerationRequest(id: string): Promise<void> 
   });
 }
 
-export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[] }) {
+function parseCoachFeedback(row:{payload:string}):CoachReviewFeedbackV1{const validation=validateCoachReviewFeedback(JSON.parse(row.payload));if(!validation.ok)throw new Error(`Stored coach feedback is invalid: ${validation.errors.join(' ')}`);return validation.value}
+export async function listCoachReviewFeedback():Promise<CoachReviewFeedbackV1[]>{const db=await database();const rows=await db.getAllAsync<{payload:string}>('SELECT payload FROM coach_review_feedback ORDER BY updated_at DESC');return rows.map(parseCoachFeedback)}
+export async function saveCoachReviewFeedback(feedback:CoachReviewFeedbackV1):Promise<void>{const validation=validateCoachReviewFeedback(feedback);if(!validation.ok)throw new Error(validation.errors.join(' '));const db=await database();const review=await db.getFirstAsync('SELECT id FROM coach_reviews WHERE id=?',feedback.reviewId);if(!review)throw new Error('The reviewed coaching record does not exist locally.');await db.withTransactionAsync(async()=>{await db.runAsync('INSERT INTO coach_review_feedback (id,owner_id,review_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,NULL,?,?,?,?,?,?) ON CONFLICT(review_id) DO UPDATE SET id=excluded.id,profile_id=excluded.profile_id,profile_revision=excluded.profile_revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at >= coach_review_feedback.updated_at',feedback.id,feedback.reviewId,feedback.profileId,feedback.profileRevision,JSON.stringify(validation.value),feedback.createdAt,feedback.updatedAt);await enqueueWithDatabase(db,'coach_review_feedback',feedback.reviewId,'upsert',validation.value)})}
+
+export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[]; coachFeedback: any[] }) {
   const db = await database();
   await db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
@@ -580,5 +594,6 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
       if (!validation.ok) throw new Error(`Remote generation request is invalid: ${validation.errors.join(' ')}`);
       await db.runAsync('INSERT INTO coaching_generation_requests (id,owner_id,generation_key,context,status,attempts,next_attempt_at,last_error,review_id,requested_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,status=excluded.status,attempts=excluded.attempts,next_attempt_at=excluded.next_attempt_at,last_error=excluded.last_error,review_id=excluded.review_id,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_generation_requests.updated_at', row.id, row.owner_id, row.generation_key, JSON.stringify(row.context), row.status, row.attempts, row.next_attempt_at, row.last_error, row.review_id, row.requested_at, row.updated_at);
     }
+    for(const row of bundle.coachFeedback){const validation=validateCoachReviewFeedback(row.payload);if(!validation.ok)throw new Error(`Remote coach feedback is invalid: ${validation.errors.join(' ')}`);const feedback=validation.value;await db.runAsync('INSERT INTO coach_review_feedback (id,owner_id,review_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(review_id) DO UPDATE SET id=excluded.id,owner_id=excluded.owner_id,profile_id=excluded.profile_id,profile_revision=excluded.profile_revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at > coach_review_feedback.updated_at',feedback.id,row.owner_id,feedback.reviewId,feedback.profileId,feedback.profileRevision,JSON.stringify(feedback),feedback.createdAt,feedback.updatedAt)}
   });
 }

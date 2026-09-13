@@ -26,6 +26,9 @@ insert into public.coaching_generation_requests(id,owner_id,generation_key,reque
 insert into public.coaching_agent_credentials(owner_id,token_hash,created_at,updated_at) values
   ('10000000-0000-4000-8000-000000000001',repeat('a',64),now(),now()),
   ('10000000-0000-4000-8000-000000000002',repeat('b',64),now(),now());
+insert into public.coach_review_feedback(id,owner_id,review_id,profile_id,profile_revision,feedback_version,payload,created_at,updated_at) values
+  ('90000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',1,1,jsonb_build_object('feedbackVersion',1,'id','90000000-0000-4000-8000-000000000001','reviewId','60000000-0000-4000-8000-000000000001','profileId','40000000-0000-4000-8000-000000000001','profileRevision',1,'usefulness','helpful','tone','right'),now(),now()),
+  ('90000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','60000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000002',1,1,jsonb_build_object('feedbackVersion',1,'id','90000000-0000-4000-8000-000000000002','reviewId','60000000-0000-4000-8000-000000000002','profileId','40000000-0000-4000-8000-000000000002','profileRevision',1,'usefulness','helpful','tone','right'),now(),now());
 set local role authenticated;
 do $test$
 declare n integer; t text; own_id uuid; other_id uuid; own_user uuid; other_user uuid; c integer;
@@ -172,6 +175,25 @@ begin
   exception when insufficient_privilege then null;
   end;
 end $test_agent_workflow_rls$;
+
+do $test_feedback_rls$
+declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  select count(*) into c from public.coach_review_feedback where id='90000000-0000-4000-8000-000000000001';
+  if c<>1 then raise exception 'Own coach feedback hidden'; end if;
+  select count(*) into c from public.coach_review_feedback where id='90000000-0000-4000-8000-000000000002';
+  if c<>0 then raise exception 'Other coach feedback exposed'; end if;
+  update public.coach_review_feedback set updated_at=now() where id='90000000-0000-4000-8000-000000000002';
+  get diagnostics c=row_count;
+  if c<>0 then raise exception 'Other coach feedback update allowed'; end if;
+  begin
+    update public.coach_review_feedback set owner_id=owner2 where id='90000000-0000-4000-8000-000000000001';
+    raise exception 'Coach feedback owner reassignment allowed';
+  exception when insufficient_privilege then null;
+  end;
+end $test_feedback_rls$;
 
 reset role;
 rollback;
