@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-010 is complete; AIC-011 review UI is in progress. AIC-006 awaits physical-iPhone verification. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added local-first generation requests, durable sync and manual retry state, a live narrow `coaching-agent` Edge endpoint, revocable hashed agent tokens, bounded retries/stale-claim recovery, server validation/evidence allowlisting, idempotent publication, agent setup UI, and copyable setup guidance. The service-role key remains server-only.
+- Current: AIC-011 implementation is complete and awaits physical-iPhone verification; AIC-012 coaching feedback is in progress. AIC-006 also awaits device verification. Unrelated QA-004 working-tree changes remain preserved and separate.
+- Changes: Added a Coach tab and Workout-screen card with data coverage, consent/offline states, request/retry controls, pending/processing/delayed/failed visibility, current/superseded labels, structured review detail, history evidence links, confidence/limitations/context disclosure, archive controls, and offline local reading.
 - Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-010 passes typecheck, 40/40 tests, iOS export, migration parity, remote RLS tests, and security advisors. Edge Function v2 is active; an isolated live fixture verified token rejection, context claim, invalid-output rejection, valid publication, duplicate idempotency, ready state, and cascade cleanup.
-- Blockers: None for AIC-011; AIC-006 device verification is pending.
-- Exact next action: Add the Coach surface, structured review/archive detail, evidence links, confidence/limitations/context labels, and visible pending/delayed/failed retry states with offline reading.
+- Validation: AIC-011 passes typecheck, 40/40 tests, iOS export, and diff check. Physical-iPhone navigation, VoiceOver, large-text, offline archive, and state-transition checks remain before Done.
+- Blockers: None for AIC-012; AIC-006/AIC-011 device verification is pending.
+- Exact next action: Add local-first usefulness/tone feedback and optional constraint-change check-ins, then sync them into the next coaching context.
 
 ## Ready
 
@@ -28,11 +28,12 @@ None.
 
 ## In progress
 
-- **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009.
+- **AIC-012 Coaching feedback:** Persist lightweight usefulness/tone feedback and changed constraints locally first, then sync for the next context; after AIC-011.
 
 ## Verify
 
 - **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004. Implementation/typecheck/tests/export pass; verify VoiceOver, large text, keyboard flow, offline save/restart, and consent copy on the physical iPhone.
+- **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009. Implementation/typecheck/tests/export pass; verify navigation, state transitions, evidence links, VoiceOver, large text, and offline archive on the physical iPhone.
 
 ## Blocked
 
@@ -40,7 +41,6 @@ None.
 
 ## Backlog
 
-- **AIC-012 Coaching feedback:** Persist lightweight usefulness/tone feedback and changed constraints locally first, then sync for the next context; after AIC-011.
 - **AIC-013 Routine proposal contract:** Define supported routine fields, per-change rationale, safety constraints, source routine version, conflict detection, and invalid-output cases; after WP-013.
 - **AIC-014 Proposal persistence and sync:** Store pending/accepted/dismissed proposals with immutable source data, RLS, idempotency, and offline availability; after AIC-013 and AIC-009.
 - **AIC-015 Proposal comparison and adoption:** Show before/after changes and accept/edit/dismiss. Preserve the prior routine, never change an active workout, and prevent duplicate or stale application; after AIC-014 and WP-015.

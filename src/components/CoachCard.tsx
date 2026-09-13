@@ -1,0 +1,11 @@
+import React, { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { getCurrentCoachingProfile, listCoachReviews, listCoachingGenerationRequests } from '../data/database';
+import { useApp } from '../context/AppContext';
+import { useTheme } from '../theme';
+import { Card } from './ui';
+
+export function CoachCard(){const t=useTheme();const router=useRouter();const {revision}=useApp();const [label,setLabel]=useState('Set your goal');const [headline,setHeadline]=useState('Make progress visible with a weekly review.');useEffect(()=>{Promise.all([getCurrentCoachingProfile(),listCoachReviews(),listCoachingGenerationRequests()]).then(([profile,reviews,requests])=>{if(reviews[0]){setLabel('LATEST COACH REVIEW');setHeadline(reviews[0].record.review.headline)}else if(requests[0]?.status==='processing'||requests[0]?.status==='pending'){setLabel('COACH IS WORKING');setHeadline('Your weekly review is being prepared.')}else if(requests[0]?.status==='failed'){setLabel('REVIEW NEEDS ATTENTION');setHeadline('Open Coach to retry your review.')}else if(profile?.consent.coachingEnabled){setLabel('COACH READY');setHeadline('Your goals and training evidence are ready for review.')}}).catch(console.warn)},[revision]);return <Pressable accessibilityRole="button" accessibilityLabel={`Open Coach. ${headline}`} onPress={()=>router.push('/coach')}><Card style={styles.card}><View style={[styles.icon,{backgroundColor:t.elevated}]}><Ionicons name="sparkles" size={21} color={t.accentDark}/></View><View style={{flex:1}}><Text style={[styles.label,{color:t.accentDark}]}>{label}</Text><Text numberOfLines={2} style={[styles.headline,{color:t.text}]}>{headline}</Text></View><Ionicons name="chevron-forward" size={22} color={t.secondary}/></Card></Pressable>}
+const styles=StyleSheet.create({card:{flexDirection:'row',alignItems:'center',gap:11,marginTop:14},icon:{width:42,height:42,borderRadius:14,alignItems:'center',justifyContent:'center'},label:{fontSize:10,fontWeight:'900',letterSpacing:1},headline:{fontSize:15,fontWeight:'700',lineHeight:20,marginTop:3}});

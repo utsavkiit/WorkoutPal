@@ -7,5 +7,6 @@ export default function TabLayout(){const t=useTheme();return <Tabs screenOption
   <Tabs.Screen name="index" options={{title:'Workout',tabBarIcon:({color,size})=><Ionicons name="barbell-outline" color={color} size={size}/>}}/>
   <Tabs.Screen name="routines" options={{title:'Routines',tabBarIcon:({color,size})=><Ionicons name="list-outline" color={color} size={size}/>}}/>
   <Tabs.Screen name="history" options={{title:'History',tabBarIcon:({color,size})=><Ionicons name="time-outline" color={color} size={size}/>}}/>
+  <Tabs.Screen name="coach" options={{title:'Coach',tabBarIcon:({color,size})=><Ionicons name="sparkles-outline" color={color} size={size}/>}}/>
   <Tabs.Screen name="settings" options={{title:'Settings',tabBarIcon:({color,size})=><Ionicons name="settings-outline" color={color} size={size}/>}}/>
 </Tabs>}
