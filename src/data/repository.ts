@@ -29,6 +29,7 @@ export interface CoachingRepository {
   saveProfile(profile: CoachingProfileV1): Promise<void>;
   checkIns(profileId?: string): Promise<CoachingCheckInV1[]>;
   saveCheckIn(checkIn: CoachingCheckInV1): Promise<void>;
+  weeklyMetrics(at?: Date): ReturnType<typeof local.getWeeklyCoachingMetrics>;
 }
 
 export const repositories = {
@@ -42,5 +43,6 @@ export const repositories = {
     saveProfile: local.saveCoachingProfileRevision,
     checkIns: local.listCoachingCheckIns,
     saveCheckIn: local.saveCoachingCheckIn,
+    weeklyMetrics: local.getWeeklyCoachingMetrics,
   } satisfies CoachingRepository,
 };

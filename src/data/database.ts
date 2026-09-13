@@ -5,6 +5,7 @@ import { canCompleteSet } from '../domain';
 import { now } from '../utils';
 import { makeId } from './id';
 import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validateCoachingProfile } from '../coaching/goals';
+import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coaching/metrics';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
@@ -401,6 +402,12 @@ export async function saveCoachingCheckIn(checkIn: CoachingCheckInV1): Promise<v
     );
     await enqueueWithDatabase(db, 'coaching_check_in', checkIn.id, 'upsert', validation.value);
   });
+}
+
+export async function getWeeklyCoachingMetrics(at = new Date()): Promise<WeeklyCoachingMetricsV1 | null> {
+  const profile = await getCurrentCoachingProfile();
+  if (!profile) return null;
+  return calculateWeeklyCoachingMetrics(await listHistory(), profile, at);
 }
 
 export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[] }) {
