@@ -4,7 +4,7 @@ import { buildCoachingContext } from './context';
 import { COACH_REVIEW_FIXTURES_V1 } from './fixtures';
 import { CoachingProfileV1 } from './goals';
 import { calculateWeeklyCoachingMetrics } from './metrics';
-import { createStoredCoachReview, reviewDataState, validateStoredCoachReview } from './reviews';
+import { classifyRemoteCoachReviews, createStoredCoachReview, reviewDataState, validateStoredCoachReview } from './reviews';
 import { WorkoutSession } from '../types';
 
 const fixture = COACH_REVIEW_FIXTURES_V1[0];
@@ -38,4 +38,24 @@ test('marks a review superseded when history changes its generation key', () => 
   const corrected = workouts.map((workout, index) => index ? workout : { ...workout, updatedAt: '2026-09-14T14:00:00.000Z' });
   const next = buildCoachingContext({ profile, metrics: calculateWeeklyCoachingMetrics(corrected, profile, new Date('2026-09-14T12:00:00.000Z')), workouts: corrected, currentRoutine: null });
   assert.equal(reviewDataState(stored, next), 'superseded');
+});
+
+test('quarantines malformed direct-agent reviews without rejecting valid rows', () => {
+  const current = context();
+  const draft = { ...fixture.expectedReview, generationKey: current.generationKey, periodStart: current.metrics.period.startDate, periodEnd: current.metrics.period.endDate, latestWorkoutId: current.metrics.latestWorkoutId };
+  const valid = createStoredCoachReview(current, draft, 'valid-review');
+  const malformed = {
+    storageVersion: 1,
+    id: 'bad-review',
+    revision: 1,
+    profileId: valid.profileId,
+    profileRevision: valid.profileRevision,
+    contextVersion: valid.contextVersion,
+    generationKey: valid.generationKey,
+    review: { contractVersion: 1, title: 'Wrong direct-write shape', observations: ['not structured'] },
+  };
+  const result = classifyRemoteCoachReviews([{ id: valid.id, payload: valid }, { id: 'bad-review', payload: malformed }]);
+  assert.equal(result.accepted.length, 1);
+  assert.equal(result.accepted[0].review.id, valid.id);
+  assert.ok(result.rejected.get('bad-review')?.some((error) => error.includes('publishedAt')));
 });

@@ -17,9 +17,22 @@ insert into public.coaching_profiles(profile_id,revision,owner_id,schema_version
 insert into public.coaching_check_ins(id,owner_id,profile_id,profile_revision,schema_version,payload,created_at,updated_at) values
   ('50000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',1,1,'{}',now(),now()),
   ('50000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000002',1,1,'{}',now(),now());
+create function pg_temp.coach_review_payload(review_id uuid, generation_key text, profile_id uuid, published_at timestamptz)
+returns jsonb language sql as $$ select jsonb_build_object(
+  'storageVersion',1,'id',review_id,'revision',1,'profileId',profile_id,'profileRevision',1,'contextVersion',1,
+  'generationKey',generation_key,'publishedAt',to_char(published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+  'review',jsonb_build_object(
+    'contractVersion',1,'generationKey',generation_key,'kind','continuity_check_in','authoredBy','RLS fixture',
+    'generatedAt',to_char(published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'headline','RLS fixture review',
+    'journeyHighlight',null,'observations','[]'::jsonb,'confidence','low','limitations',jsonb_build_array('RLS fixture'),
+    'nextStep',jsonb_build_object('title','Continue','rationale','RLS fixture'),
+    'contextUsed',jsonb_build_array(jsonb_build_object('source','workoutpal','label','RLS fixture','status','used','startDate','2026-09-01','endDate','2026-09-07'))
+  )
+) $$;
 insert into public.coach_reviews(id,owner_id,generation_key,storage_version,contract_version,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,payload,published_at) values
-  ('60000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','rls-owner-1',1,1,'40000000-0000-4000-8000-000000000001',1,1,'2026-09-01','2026-09-07',null,jsonb_build_object('storageVersion',1,'id','60000000-0000-4000-8000-000000000001','revision',1,'profileId','40000000-0000-4000-8000-000000000001','profileRevision',1,'contextVersion',1,'generationKey','rls-owner-1','review',jsonb_build_object('contractVersion',1,'generationKey','rls-owner-1','periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'observations','[]'::jsonb,'contextUsed','[]'::jsonb)),now()),
-  ('60000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','rls-owner-2',1,1,'40000000-0000-4000-8000-000000000002',1,1,'2026-09-01','2026-09-07',null,jsonb_build_object('storageVersion',1,'id','60000000-0000-4000-8000-000000000002','revision',1,'profileId','40000000-0000-4000-8000-000000000002','profileRevision',1,'contextVersion',1,'generationKey','rls-owner-2','review',jsonb_build_object('contractVersion',1,'generationKey','rls-owner-2','periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'observations','[]'::jsonb,'contextUsed','[]'::jsonb)),now());
+  ('60000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','rls-owner-1',1,1,'40000000-0000-4000-8000-000000000001',1,1,'2026-09-01','2026-09-07',null,pg_temp.coach_review_payload('60000000-0000-4000-8000-000000000001','rls-owner-1','40000000-0000-4000-8000-000000000001',now()),now()),
+  ('60000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','rls-owner-2',1,1,'40000000-0000-4000-8000-000000000002',1,1,'2026-09-01','2026-09-07',null,pg_temp.coach_review_payload('60000000-0000-4000-8000-000000000002','rls-owner-2','40000000-0000-4000-8000-000000000002',now()),now());
 insert into public.coaching_generation_requests(id,owner_id,generation_key,request_version,context_version,profile_id,profile_revision,period_start,period_end,context,status,attempts,requested_at,updated_at) values
   ('70000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','request-owner-1',1,1,'40000000-0000-4000-8000-000000000001',1,'2026-09-01','2026-09-07',jsonb_build_object('generationKey','request-owner-1','contextVersion',1,'profile',jsonb_build_object('id','40000000-0000-4000-8000-000000000001','revision',1)),'pending',0,now(),now()),
   ('70000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','request-owner-2',1,1,'40000000-0000-4000-8000-000000000002',1,'2026-09-01','2026-09-07',jsonb_build_object('generationKey','request-owner-2','contextVersion',1,'profile',jsonb_build_object('id','40000000-0000-4000-8000-000000000002','revision',1)),'pending',0,now(),now());
@@ -145,7 +158,7 @@ begin
   end;
   begin
     insert into public.coach_reviews(id,owner_id,generation_key,storage_version,contract_version,profile_id,profile_revision,context_version,period_start,period_end,payload,published_at)
-    values(new_id,owner1,'cross-owner',1,1,'40000000-0000-4000-8000-000000000002',1,1,'2026-09-01','2026-09-07',jsonb_build_object('storageVersion',1,'id',new_id,'revision',1,'profileId','40000000-0000-4000-8000-000000000002','profileRevision',1,'contextVersion',1,'generationKey','cross-owner','review',jsonb_build_object('contractVersion',1,'generationKey','cross-owner','periodStart','2026-09-01','periodEnd','2026-09-07','latestWorkoutId',null,'observations','[]'::jsonb,'contextUsed','[]'::jsonb)),now());
+    values(new_id,owner1,'cross-owner',1,1,'40000000-0000-4000-8000-000000000002',1,1,'2026-09-01','2026-09-07',pg_temp.coach_review_payload(new_id,'cross-owner','40000000-0000-4000-8000-000000000002',now()),now());
     raise exception 'Cross-owner coach review insert allowed';
   exception when insufficient_privilege then null;
   end;
@@ -195,6 +208,22 @@ begin
   end;
 end $test_feedback_rls$;
 
+do $test_coaching_delete$
+declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  perform public.delete_my_coaching_data();
+  select count(*) into c from public.coaching_profiles where owner_id=owner1;
+  if c<>0 then raise exception 'Owner coaching deletion left profile data'; end if;
+  select count(*) into c from public.coaching_profiles where owner_id=owner2;
+  if c<>0 then raise exception 'Other profile unexpectedly visible under RLS'; end if;
+  perform set_config('request.jwt.claim.sub',owner2::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner2,'role','authenticated')::text,true);
+  select count(*) into c from public.coaching_profiles where owner_id=owner2;
+  if c<>1 then raise exception 'Owner coaching deletion affected another user'; end if;
+end $test_coaching_delete$;
+
 reset role;
 rollback;
-select 'PASS: two-user workout, coaching, review, request, and credential RLS isolation; immutable records and ownership boundaries hold; fixtures rolled back' as result;
+select 'PASS: two-user workout and coaching isolation, immutable boundaries, scoped deletion, and RLS hold; fixtures rolled back' as result;

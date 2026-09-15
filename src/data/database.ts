@@ -7,7 +7,7 @@ import { makeId } from './id';
 import { CoachingCheckInV1, CoachingProfileV1, validateCoachingCheckIn, validateCoachingProfile } from '../coaching/goals';
 import { WeeklyCoachingMetricsV1, calculateWeeklyCoachingMetrics } from '../coaching/metrics';
 import { CoachingContextV1, buildCoachingContext } from '../coaching/context';
-import { StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
+import { classifyRemoteCoachReviews, StoredCoachReviewV1, validateStoredCoachReview } from '../coaching/reviews';
 import { CoachingGenerationRequestV1, validateGenerationRequest } from '../coaching/workflow';
 import { CoachReviewFeedbackV1, validateCoachReviewFeedback } from '../coaching/feedback';
 import { WeeklyScheduleDecision, weeklyScheduleDecision } from '../coaching/scheduling';
@@ -540,6 +540,20 @@ export async function markCoachReviewNotificationDelivered(reviewId: string): Pr
   await db.runAsync('INSERT OR IGNORE INTO coach_review_notifications (review_id,delivered_at) VALUES (?,?)', reviewId, now());
 }
 
+export async function deleteCoachingData(): Promise<void> {
+  const db = await database();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync("DELETE FROM outbox WHERE entity LIKE 'coach%' OR entity LIKE 'coaching_%'");
+    await db.runAsync('DELETE FROM coach_review_notifications');
+    await db.runAsync('DELETE FROM coach_review_feedback');
+    await db.runAsync('DELETE FROM coaching_generation_requests');
+    await db.runAsync('DELETE FROM coach_reviews');
+    await db.runAsync('DELETE FROM coaching_check_ins');
+    await db.runAsync('DELETE FROM coaching_profiles');
+    await enqueueWithDatabase(db, 'coach_data_delete', 'current-user', 'delete', { requested_at: now() });
+  });
+}
+
 export async function retryCoachingGenerationRequest(id: string): Promise<void> {
   const db = await database(); const timestamp = now();
   const row = await db.getFirstAsync<Parameters<typeof parseGenerationRequest>[0]>('SELECT * FROM coaching_generation_requests WHERE id=?', id);
@@ -558,6 +572,8 @@ export async function saveCoachReviewFeedback(feedback:CoachReviewFeedbackV1):Pr
 
 export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[]; coachFeedback: any[] }) {
   const db = await database();
+  const remoteReviews = classifyRemoteCoachReviews(bundle.coachReviews);
+  for (const [id, errors] of remoteReviews.rejected) console.warn(`[sync] quarantined invalid remote coach review ${id}:`, errors.join(' '));
   await db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
     for (const r of bundle.routines) {
@@ -599,10 +615,7 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
         checkIn.id, row.owner_id, checkIn.profileId, checkIn.profileRevision, JSON.stringify(checkIn), checkIn.createdAt, checkIn.updatedAt,
       );
     }
-    for (const row of bundle.coachReviews) {
-      const validation = validateStoredCoachReview(row.payload);
-      if (!validation.ok) throw new Error(`Remote coach review is invalid: ${validation.errors.join(' ')}`);
-      const review = validation.value;
+    for (const { row, review } of remoteReviews.accepted) {
       await db.runAsync(
         'INSERT OR IGNORE INTO coach_reviews (id,owner_id,generation_key,payload,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,published_at,archived_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
         review.id, row.owner_id, review.generationKey, JSON.stringify(review), review.profileId, review.profileRevision, review.contextVersion, review.review.periodStart, review.review.periodEnd, review.review.latestWorkoutId, review.publishedAt, row.archived_at,
@@ -610,7 +623,8 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
       if (row.archived_at) await db.runAsync('UPDATE coach_reviews SET archived_at=? WHERE id=? AND (archived_at IS NULL OR archived_at < ?)', row.archived_at, review.id, row.archived_at);
     }
     for (const row of bundle.coachingRequests) {
-      const value = { requestVersion: row.request_version, id: row.id, generationKey: row.generation_key, context: row.context, status: row.status, attempts: row.attempts, requestedAt: row.requested_at, updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, lastError: row.last_error, reviewId: row.review_id };
+      const rejectedReview = typeof row.review_id === 'string' && remoteReviews.rejected.has(row.review_id);
+      const value = { requestVersion: row.request_version, id: row.id, generationKey: row.generation_key, context: row.context, status: rejectedReview ? 'failed' : row.status, attempts: row.attempts, requestedAt: row.requested_at, updatedAt: row.updated_at, nextAttemptAt: row.next_attempt_at, lastError: rejectedReview ? 'The published review was rejected because it did not match the WorkoutPal contract.' : row.last_error, reviewId: rejectedReview ? null : row.review_id };
       const validation = validateGenerationRequest(value);
       if (!validation.ok) throw new Error(`Remote generation request is invalid: ${validation.errors.join(' ')}`);
       await db.runAsync('INSERT INTO coaching_generation_requests (id,owner_id,generation_key,context,status,attempts,next_attempt_at,last_error,review_id,requested_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,status=excluded.status,attempts=excluded.attempts,next_attempt_at=excluded.next_attempt_at,last_error=excluded.last_error,review_id=excluded.review_id,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_generation_requests.updated_at', row.id, row.owner_id, row.generation_key, JSON.stringify(row.context), row.status, row.attempts, row.next_attempt_at, row.last_error, row.review_id, row.requested_at, row.updated_at);

@@ -42,6 +42,10 @@ npm test
 npx expo export --platform ios
 ```
 
+Native iOS Simulator E2E tests use Detox: run `npm run e2e:build:ios`, then
+`npm run e2e:ios`. See [`e2e/README.md`](e2e/README.md) for setup, isolation,
+coverage, and troubleshooting.
+
 Local notification behavior should be verified on a physical iPhone or development build.
 
 ## Connected development project

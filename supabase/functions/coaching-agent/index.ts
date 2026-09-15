@@ -5,7 +5,12 @@ const headers = { 'content-type': 'application/json', 'cache-control': 'no-store
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
 const text = (value: unknown, maximum: number) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= maximum;
 const date = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`));
-const timestamp = (value: unknown) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+const timestamp = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !Number.isNaN(Date.parse(value));
+const record = (value: unknown): value is Record<string, any> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const unexpected = (value: Record<string, any>, allowed: string[]) => Object.keys(value).filter((key) => !allowed.includes(key));
+function strings(value: unknown, maximum: number) {
+  return Array.isArray(value) && value.length <= maximum && value.every((item) => typeof item === 'string' && item.trim()) && new Set(value).size === value.length;
+}
 
 function serviceKey() {
   const named = Deno.env.get('SUPABASE_SECRET_KEYS');
@@ -20,9 +25,11 @@ async function sha256(value: string) {
 
 function validateDraft(value: unknown, context: Record<string, any>) {
   const errors: string[] = [];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return ['review must be an object'];
+  if (!record(value)) return ['review must be an object'];
   const review = value as Record<string, any>;
+  if (unexpected(review, ['contractVersion','generationKey','kind','authoredBy','generatedAt','periodStart','periodEnd','latestWorkoutId','headline','journeyHighlight','observations','confidence','limitations','nextStep','contextUsed']).length) errors.push('review contains unsupported fields');
   if (review.contractVersion !== 1) errors.push('contractVersion must be 1');
+  if (!text(review.generationKey, 160)) errors.push('generationKey is required');
   if (review.generationKey !== context.generationKey) errors.push('generationKey does not match the request');
   if (!['weekly_review', 'continuity_check_in'].includes(review.kind)) errors.push('kind is invalid');
   if (!text(review.authoredBy, 100)) errors.push('authoredBy is required');
@@ -31,19 +38,28 @@ function validateDraft(value: unknown, context: Record<string, any>) {
   if (!date(review.periodStart) || review.periodStart !== period?.startDate || !date(review.periodEnd) || review.periodEnd !== period?.endDate) errors.push('review period does not match the request');
   if (review.latestWorkoutId !== context.metrics?.latestWorkoutId) errors.push('latestWorkoutId does not match the request');
   if (!text(review.headline, 180)) errors.push('headline is required');
-  if (!review.nextStep || !text(review.nextStep.title, 120) || !text(review.nextStep.rationale, 500)) errors.push('nextStep is invalid');
+  if (!record(review.nextStep) || unexpected(review.nextStep, ['title','rationale']).length || !text(review.nextStep.title, 120) || !text(review.nextStep.rationale, 500)) errors.push('nextStep is invalid');
   if (!['low', 'medium', 'high'].includes(review.confidence)) errors.push('confidence is invalid');
-  if (!Array.isArray(review.limitations) || review.limitations.length > 5 || review.limitations.some((item: unknown) => !text(item, 300))) errors.push('limitations are invalid');
-  if (!Array.isArray(review.contextUsed) || review.contextUsed.length < 1 || review.contextUsed.length > 8 || !review.contextUsed.some((item: any) => item?.source === 'workoutpal')) errors.push('contextUsed must include WorkoutPal');
+  if (!strings(review.limitations, 5) || review.limitations.some((item: unknown) => !text(item, 300))) errors.push('limitations are invalid');
+  if (!Array.isArray(review.contextUsed) || review.contextUsed.length < 1 || review.contextUsed.length > 8) errors.push('contextUsed is invalid');
+  else {
+    for (const item of review.contextUsed) {
+      if (!record(item) || unexpected(item, ['source','label','status','startDate','endDate']).length || !['workoutpal','external'].includes(item.source) || !text(item.label, 120) || !['used','stale','unavailable'].includes(item.status) || (item.startDate !== null && !date(item.startDate)) || (item.endDate !== null && !date(item.endDate)) || (date(item.startDate) && date(item.endDate) && item.startDate > item.endDate)) errors.push('a contextUsed source is invalid');
+    }
+    if (!review.contextUsed.some((item: any) => item?.source === 'workoutpal')) errors.push('contextUsed must include WorkoutPal');
+  }
   if (!Array.isArray(review.observations) || review.observations.length > (review.kind === 'weekly_review' ? 4 : 2) || (review.kind === 'weekly_review' && review.observations.length < 1)) errors.push('observations are invalid');
   const evidenceIds = new Set((context.evidenceWorkouts ?? []).map((workout: any) => workout.id));
   const cited: string[] = [];
-  if (review.journeyHighlight?.evidenceWorkoutIds) cited.push(...review.journeyHighlight.evidenceWorkoutIds);
+  if (record(review.journeyHighlight) && strings(review.journeyHighlight.evidenceWorkoutIds, 8)) cited.push(...review.journeyHighlight.evidenceWorkoutIds);
   if (Array.isArray(review.observations)) for (const observation of review.observations) {
-    if (!observation || !['progress', 'consistency', 'constraint', 'uncertainty'].includes(observation.category) || !text(observation.text, 500) || !Array.isArray(observation.evidenceWorkoutIds)) errors.push('an observation is invalid');
-    else cited.push(...observation.evidenceWorkoutIds);
+    if (!record(observation) || unexpected(observation, ['category','text','evidenceWorkoutIds']).length || !['progress', 'consistency', 'constraint', 'uncertainty'].includes(observation.category) || !text(observation.text, 500) || !strings(observation.evidenceWorkoutIds, 12) || (observation.category !== 'uncertainty' && observation.evidenceWorkoutIds.length < 1)) errors.push('an observation is invalid');
+    else cited.push(...observation.evidenceWorkoutIds as string[]);
   }
-  if (review.kind === 'weekly_review' && (!review.journeyHighlight || !text(review.journeyHighlight.text, 320) || !Array.isArray(review.journeyHighlight.evidenceWorkoutIds) || review.journeyHighlight.evidenceWorkoutIds.length < 1)) errors.push('weekly review journeyHighlight is invalid');
+  if (review.journeyHighlight !== null && (!record(review.journeyHighlight) || unexpected(review.journeyHighlight, ['text','evidenceWorkoutIds']).length || !text(review.journeyHighlight.text, 320) || !strings(review.journeyHighlight.evidenceWorkoutIds, 8))) errors.push('journeyHighlight is invalid');
+  if (review.kind === 'weekly_review' && (!record(review.journeyHighlight) || !strings(review.journeyHighlight.evidenceWorkoutIds, 8) || review.journeyHighlight.evidenceWorkoutIds.length < 1)) errors.push('weekly review journeyHighlight is invalid');
+  if (review.kind === 'continuity_check_in' && review.journeyHighlight !== null && !record(review.journeyHighlight)) errors.push('continuity journeyHighlight must be an object or null');
+  if (new Set(cited).size !== cited.length) errors.push('review contains duplicate evidence IDs');
   if (cited.some((id) => typeof id !== 'string' || !evidenceIds.has(id))) errors.push('review cites evidence outside the supplied context');
   return errors;
 }
@@ -60,6 +76,10 @@ Deno.serve(async (request) => {
   if (credential.error || !credential.data) return response({ error: 'Invalid or revoked agent token.' }, 401);
   const ownerId = credential.data.owner_id;
   await admin.from('coaching_agent_credentials').update({ last_used_at: new Date().toISOString() }).eq('owner_id', ownerId);
+  const profile = await admin.from('coaching_profiles').select('payload').eq('owner_id', ownerId).order('effective_at', { ascending: false }).order('revision', { ascending: false }).limit(1).maybeSingle();
+  if (profile.error) return response({ error: 'Could not verify coaching consent.' }, 500);
+  const consent = profile.data?.payload?.consent;
+  if (consent?.coachingEnabled !== true || consent?.shareWorkoutHistory !== true) return response({ error: 'Coaching consent is disabled.' }, 403);
 
   if (request.method === 'GET') {
     const now = new Date().toISOString();
@@ -78,9 +98,14 @@ Deno.serve(async (request) => {
   }
 
   if (request.method !== 'POST') return response({ error: 'Method not allowed.' }, 405);
+  const contentLength = Number(request.headers.get('content-length') ?? 0);
+  if (contentLength > 100_000) return response({ error: 'Request body is too large.' }, 413);
   let body: Record<string, any>;
   try { body = await request.json(); } catch { return response({ error: 'Body must be JSON.' }, 400); }
-  if (!text(body.generationKey, 200)) return response({ error: 'generationKey is required.' }, 400);
+  if (!record(body) || JSON.stringify(body).length > 100_000) return response({ error: 'Request body is too large.' }, 413);
+  if (!text(body.generationKey, 160)) return response({ error: 'generationKey is required.' }, 400);
+  const allowedEnvelope = body.action === 'publish' ? ['action','generationKey','review'] : ['action','generationKey','retryable','error'];
+  if (unexpected(body, allowedEnvelope).length) return response({ error: 'Request contains unsupported fields.' }, 400);
   const requestRow = await admin.from('coaching_generation_requests').select('*').eq('owner_id', ownerId).eq('generation_key', body.generationKey).maybeSingle();
   if (requestRow.error || !requestRow.data) return response({ error: 'Generation request not found.' }, 404);
   if (body.action === 'fail') {

@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: AIC-016 is implemented and awaiting physical-iPhone verification; AIC-017 security/privacy review is in progress. AIC-006/AIC-011 also await device verification. AIC-013–AIC-015 remain dependency-gated by WP-013–WP-015. Unrelated QA-004 working-tree changes remain preserved and separate.
-- Changes: Added deterministic preferred-day scheduling on launch/foreground, offline outbox enqueueing, same-period duplicate prevention, and separate opt-in review-ready notifications with local delivery deduplication.
-- Decisions: Goal priority controls conflicts; constraints and avoided exercises outrank preferences; current explicit input outranks older/inferred context. Goal edits create revisions, and earlier reviews retain the revision they analyzed. Coaching requires explicit workout-history consent; notification consent remains separate.
-- Validation: AIC-016 passes typecheck and 47/47 tests, including DST, disabled/consent, duplicate, and delayed scheduling cases. Physical notification delivery and an offline lifecycle journey remain pending.
-- Blockers: AIC-013/AIC-015 wait on the routine target tasks WP-013–WP-015. AIC-006/AIC-011 device verification is pending; none blocks AIC-016.
-- Exact next action: Complete AIC-017 threat modeling and harden the agent boundary, especially consent revocation and whole-payload validation, then rerun ownership and advisor checks.
+- Current: AIC-017 security/privacy review remains in progress. The malformed first ChatGPT/MCP review was repaired in place, and the direct-publishing boundary plus app sync are hardened. The repaired review is ready for the user to reopen on the physical iPhone.
+- Changes: Added/applied a complete contract-v1 database constraint and trusted `public.publish_coach_review_v1(request_id, review_json)` helper that binds server-owned metadata and rejects out-of-context evidence. MCP instructions now require the helper. Remote sync classifies reviews first, quarantines invalid ones, maps affected requests to a safe local failure, and catches merge errors instead of producing an unhandled red screen. Updated regression and RLS fixtures.
+- Decisions: Agents may read tables/schema directly but must not insert `coach_reviews` or mark requests ready themselves. The database owns IDs, versions, owner, generation binding, review dates, latest workout, and timestamps. Malformed remote rows are never partially imported.
+- Validation: Repaired review `c569d772-b003-405a-9cb0-95055aa7ecf6` passes the WorkoutPal validator. Both new migrations are applied and in parity. Live rollback tests confirm the publisher succeeds and malformed updates are rejected. Typecheck, 48/48 tests, iOS export, two-user RLS suite, security advisors, migration parity, and diff check pass. Security advisors only report the pre-existing leaked-password-protection warning. Direct DB lint could not authenticate because the CLI password path is unavailable.
+- Blockers: Physical relaunch verification is pending because the paired iPhone was locked when the launch was attempted. AIC-013/AIC-015 remain dependency-gated; prior device checks remain pending.
+- Exact next action: Unlock the iPhone, dismiss/reload the development error screen, and confirm the repaired review opens. Then finish AIC-017 device/access verification and consider enabling leaked-password protection.
 
 ## Ready
 

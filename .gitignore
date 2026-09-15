@@ -10,3 +10,7 @@ dist/
 *.mobileprovision
 *.orig.*
 web-build/
+
+# Native E2E build products and failure evidence
+ios/build-detox/
+artifacts/

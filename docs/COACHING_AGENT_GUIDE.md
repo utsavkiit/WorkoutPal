@@ -19,7 +19,7 @@ Routine proposal publishing is intentionally unsupported in v1. Do not write or 
 
 ## Publishing boundary
 
-The agent returns one JSON object matching `CoachReviewDraftV1`. A trusted publisher must call `validateCoachReviewDraft` and bind the output to the expected generation key, review dates, and latest included workout before persistence. Contract v1 rejects unexpected fields, including ownership and routine-proposal fields, and requires WorkoutPal to appear as the baseline context source.
+The agent returns one JSON object matching `CoachReviewDraftV1`. For direct Supabase MCP access, publish only through `public.publish_coach_review_v1(request_id, review_json)`; the database function binds ownership, IDs, versions, generation key, review dates, latest included workout, and timestamps before persistence. Contract v1 rejects unexpected fields, including ownership and routine-proposal fields, and requires WorkoutPal to appear as the baseline context source.
 
 The model output never supplies the owning user ID. Ownership comes from the authenticated publishing boundary. Reject the entire payload when validation fails; never partially save or silently repair it.
 

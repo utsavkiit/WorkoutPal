@@ -17,6 +17,19 @@ export interface StoredCoachReviewV1 {
 
 export type StoredReviewValidation = { ok: true; value: StoredCoachReviewV1 } | { ok: false; errors: string[] };
 
+export type RemoteCoachReviewCandidate = { id?: unknown; payload?: unknown };
+
+export function classifyRemoteCoachReviews<T extends RemoteCoachReviewCandidate>(rows: T[]) {
+  const accepted: { row: T; review: StoredCoachReviewV1 }[] = [];
+  const rejected = new Map<string, string[]>();
+  for (const row of rows) {
+    const validation = validateStoredCoachReview(row.payload);
+    if (validation.ok) accepted.push({ row, review: validation.value });
+    else rejected.set(typeof row.id === 'string' ? row.id : 'unknown', validation.errors);
+  }
+  return { accepted, rejected };
+}
+
 function timestamp(value: unknown) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !Number.isNaN(Date.parse(value));
 }

@@ -125,6 +125,9 @@ export async function pushPending(session: Session) {
         const feedback=payload as CoachReviewFeedbackV1;
         const {error}=await supabase.from('coach_review_feedback').upsert({id:feedback.id,owner_id:session.user.id,review_id:feedback.reviewId,profile_id:feedback.profileId,profile_revision:feedback.profileRevision,feedback_version:feedback.feedbackVersion,payload:feedback,created_at:feedback.createdAt,updated_at:feedback.updatedAt},{onConflict:'owner_id,review_id'});
         if(error)throw error;
+      } else if(item.entity==='coach_data_delete'){
+        const {error}=await supabase.rpc('delete_my_coaching_data');
+        if(error)throw error;
       }
       await completeOutbox(item.id);
     } catch (error) {
@@ -151,8 +154,13 @@ export async function pushPending(session: Session) {
       failed=true;
       console.error('[sync] pull failed:', pullError.message);
     } else {
-      await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[],coachFeedback:coachFeedback.data??[]});
-      console.info('[sync] Supabase push and pull completed', {
+      try {
+        await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[],coachFeedback:coachFeedback.data??[]});
+      } catch (error) {
+        failed=true;
+        console.error('[sync] merge failed:', errorMessage(error));
+      }
+      if (!failed) console.info('[sync] Supabase push and pull completed', {
         workouts: workouts.data?.length ?? 0,
         workoutExercises: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises?.length ?? 0), 0),
         workoutSets: (workouts.data ?? []).reduce((total, workout) => total + (workout.workout_exercises ?? []).reduce((exerciseTotal: number, exercise: any) => exerciseTotal + (exercise.workout_sets?.length ?? 0), 0), 0),

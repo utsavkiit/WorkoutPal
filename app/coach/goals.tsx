@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, PrimaryButton, Screen } from '../../src/components/ui';
 import { ExercisePicker } from '../../src/components/ExercisePicker';
 import { useApp } from '../../src/context/AppContext';
-import { getCurrentCoachingProfile, listExercises, saveCoachingProfileRevision } from '../../src/data/database';
+import { deleteCoachingData, getCurrentCoachingProfile, listExercises, saveCoachingProfileRevision } from '../../src/data/database';
 import { makeId } from '../../src/data/id';
 import { CoachingProfileV1, TrainingGoalFocus, createDefaultCoachingProfile, validateCoachingProfile } from '../../src/coaching/goals';
 import { Exercise } from '../../src/types';
@@ -135,6 +135,15 @@ export default function GoalsScreen() {
     } finally { setSaving(false); }
   };
 
+  const removeCoachingData = () => Alert.alert(
+    'Delete all coaching data?',
+    'This removes goals, check-ins, review requests, reviews, feedback, and any legacy WorkoutPal agent token. It does not revoke Supabase MCP access. Your workouts and routines stay intact.',
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete coaching data', style: 'destructive', onPress: async () => {
+      try { await deleteCoachingData(); refresh(); router.back(); }
+      catch (error) { Alert.alert('Could not delete coaching data', error instanceof Error ? error.message : String(error)); }
+    } }],
+  );
+
   if (loading) return <Screen style={styles.center}><Text style={{ color: t.secondary }}>Loading goals…</Text></Screen>;
   return <Screen><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={styles.iconButton}><Ionicons name="chevron-back" size={28} color={t.text}/></Pressable><Text style={[styles.title, { color: t.text }]}>My Goals</Text><View style={styles.iconButton}/></View>
@@ -156,7 +165,8 @@ export default function GoalsScreen() {
       {weeklyEnabled && <><Divider/><Toggle label="Review-ready notifications" detail="Optional. Notify me only when a new review is available." value={notificationEnabled} onChange={async (value) => { if (!value) return setNotificationEnabled(false); const granted = await requestCoachNotificationPermission(); if (granted) setNotificationEnabled(true); else Alert.alert('Notifications are off', 'You can enable WorkoutPal notifications in iPhone Settings.'); }}/></>}
     </Card>
     <PrimaryButton title={saving ? 'Saving…' : existing ? 'Save new revision' : 'Save goals'} disabled={saving} onPress={save}/>
-    <PrimaryButton kind="secondary" title="External agent setup" onPress={() => router.push('/coach/setup')}/>
+    <PrimaryButton kind="secondary" title="Connect an agent" onPress={() => router.push('/coach/setup')}/>
+    {existing && <PrimaryButton kind="danger" title="Delete coaching data" onPress={removeCoachingData}/>}
     {existing && <Text style={[styles.revision, { color: t.secondary }]}>Current revision {existing.revision}. Earlier reviews keep the goal revision they used.</Text>}
   </ScrollView><ExercisePicker visible={pickerVisible} onClose={() => setPickerVisible(false)} onSelect={(item) => { setExercise(item); setPickerVisible(false); }}/></Screen>;
 }

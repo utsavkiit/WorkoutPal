@@ -12,11 +12,11 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032 implementation continues on branch `feature/ai-coach`. Detailed tasks and durable context live in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-001 through AIC-005 are complete and AIC-006 goal UI is active. QA-004 remains blocked on disk space for actual Detox UI validation; no E2E tests are claimed passing.
-- Changes: Added a validated, versioned coaching profile with ranked goals, optional lift targets, training constraints/preferences, explicit history consent, weekly review preferences, and preserved goal revisions. Added durable precedence, consent, and correction semantics. No persistence or cloud changes yet; existing unrelated working-tree changes remain preserved.
-- Validation: AIC-003 passes `npm run typecheck`, `npm test` (27/27), and `git diff --check`. AIC-001's iOS export passed. QA-004 previously passed its Release simulator Xcode build; actual Detox UI validation remains blocked by disk space.
-- Exact next action: Implement AIC-006 My Goals and explicit coaching-consent UI. Do not begin agent access or routine proposals until their preceding feature tasks and security boundaries are complete.
-- Prior context: WP-009/WP-010/WP-031 remain in Verify. The remote migration ledger was safely repaired after schema/RLS verification; migrations 001, 002, and the AI profile migration are applied and in parity. Next feature priority remains WP-001 when AI Coach work is paused.
+- Current: WP-032/AIC-017 repaired and hardened the first live ChatGPT/Supabase MCP publish. The corrected review is ready for physical-iPhone confirmation. QA-004 remains blocked on disk space.
+- Changes: Repaired the invalid remote payload, added/applied a validated database publisher and complete review constraint, updated agent instructions, and made app sync quarantine invalid remote coaching rows rather than crashing.
+- Validation: The repaired row passes WorkoutPal validation; live publisher and malformed-update checks pass; migrations are in parity; typecheck, 48/48 tests, iOS export, two-user RLS, security advisors, and diff check pass. Only the pre-existing leaked-password-protection warning remains. Direct DB lint lacked password-path authentication.
+- Exact next action: Unlock the iPhone, reload WorkoutPal, and confirm the review opens without the red screen; then complete the remaining AIC-017 access/device review.
+- Prior context: AIC-006/AIC-011/AIC-016 and WP-009/WP-010/WP-031 remain in Verify; AIC-013–AIC-015 remain dependency-gated.
 
 ## Ready
 
