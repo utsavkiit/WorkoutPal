@@ -11,9 +11,19 @@ import { classifyRemoteCoachReviews, StoredCoachReviewV1, validateStoredCoachRev
 import { CoachingGenerationRequestV1, validateGenerationRequest } from '../coaching/workflow';
 import { CoachReviewFeedbackV1, validateCoachReviewFeedback } from '../coaching/feedback';
 import { WeeklyScheduleDecision, weeklyScheduleDecision } from '../coaching/scheduling';
+import { CoachRoutineProposalItem, CoachRoutineProposalStatus, sourceRoutineStillMatches, validateStoredCoachRoutineProposal } from '../coaching/proposals';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let initializePromise: Promise<void> | null = null;
+let proposalSyncTransactionTail: Promise<void> = Promise.resolve();
+
+async function serializeProposalSyncTransaction<T>(work: () => Promise<T>): Promise<T> {
+  const previous = proposalSyncTransactionTail;
+  let release!: () => void;
+  proposalSyncTransactionTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try { return await work(); } finally { release(); }
+}
 
 const database = () => {
   dbPromise ??= SQLite.openDatabaseAsync('workoutpal.db');
@@ -88,6 +98,15 @@ CREATE TABLE IF NOT EXISTS coach_review_feedback (
   FOREIGN KEY(review_id) REFERENCES coach_reviews(id) ON DELETE CASCADE,
   FOREIGN KEY(profile_id, profile_revision) REFERENCES coaching_profiles(profile_id, revision)
 );
+CREATE TABLE IF NOT EXISTS coach_routine_proposals (
+  id TEXT PRIMARY KEY, owner_id TEXT, review_id TEXT NOT NULL UNIQUE REFERENCES coach_reviews(id) ON DELETE CASCADE,
+  generation_key TEXT NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending','accepted','dismissed')),
+  applied_routine_id TEXT, decided_at TEXT, published_at TEXT NOT NULL,
+  CHECK((status = 'accepted' AND applied_routine_id IS NOT NULL AND decided_at IS NOT NULL)
+    OR (status = 'dismissed' AND applied_routine_id IS NULL AND decided_at IS NOT NULL)
+    OR (status = 'pending' AND applied_routine_id IS NULL AND decided_at IS NULL))
+);
 CREATE TABLE IF NOT EXISTS coach_review_notifications (
   review_id TEXT PRIMARY KEY, delivered_at TEXT NOT NULL,
   FOREIGN KEY(review_id) REFERENCES coach_reviews(id) ON DELETE CASCADE
@@ -99,6 +118,7 @@ CREATE INDEX IF NOT EXISTS coaching_check_ins_date ON coaching_check_ins(created
 CREATE INDEX IF NOT EXISTS coach_reviews_period ON coach_reviews(period_end DESC, published_at DESC);
 CREATE INDEX IF NOT EXISTS coaching_requests_status ON coaching_generation_requests(status, requested_at DESC);
 CREATE INDEX IF NOT EXISTS coach_feedback_date ON coach_review_feedback(updated_at DESC);
+CREATE INDEX IF NOT EXISTS coach_proposals_status ON coach_routine_proposals(status, published_at DESC);
 `;
 
 async function initializeDatabaseOnce() {
@@ -344,7 +364,7 @@ export async function deleteHistorySet(setId: string) {
 }
 
 export type OutboxRow = { id: string; entity: string; entity_id: string; operation: string; payload: string; attempts: number };
-async function enqueueWithDatabase(db: SQLite.SQLiteDatabase, entity: string, entityId: string, operation: string, payload: unknown) {
+async function enqueueWithDatabase(db: Pick<SQLite.SQLiteDatabase, 'runAsync'>, entity: string, entityId: string, operation: string, payload: unknown) {
   await db.runAsync('DELETE FROM outbox WHERE entity=? AND entity_id=?', entity, entityId);
   await db.runAsync('INSERT INTO outbox VALUES (?,?,?,?,?,?,0,NULL)', makeId(), entity, entityId, operation, JSON.stringify(payload), now());
 }
@@ -365,6 +385,7 @@ export async function attachLocalOwner(ownerId: string) {
     await db.runAsync('UPDATE coach_reviews SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coaching_generation_requests SET owner_id=? WHERE owner_id IS NULL', ownerId);
     await db.runAsync('UPDATE coach_review_feedback SET owner_id=? WHERE owner_id IS NULL', ownerId);
+    await db.runAsync('UPDATE coach_routine_proposals SET owner_id=? WHERE owner_id IS NULL', ownerId);
   });
 }
 
@@ -545,6 +566,7 @@ export async function deleteCoachingData(): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.runAsync("DELETE FROM outbox WHERE entity LIKE 'coach%' OR entity LIKE 'coaching_%'");
     await db.runAsync('DELETE FROM coach_review_notifications');
+    await db.runAsync('DELETE FROM coach_routine_proposals');
     await db.runAsync('DELETE FROM coach_review_feedback');
     await db.runAsync('DELETE FROM coaching_generation_requests');
     await db.runAsync('DELETE FROM coach_reviews');
@@ -570,11 +592,76 @@ function parseCoachFeedback(row:{payload:string}):CoachReviewFeedbackV1{const va
 export async function listCoachReviewFeedback():Promise<CoachReviewFeedbackV1[]>{const db=await database();const rows=await db.getAllAsync<{payload:string}>('SELECT payload FROM coach_review_feedback ORDER BY updated_at DESC');return rows.map(parseCoachFeedback)}
 export async function saveCoachReviewFeedback(feedback:CoachReviewFeedbackV1):Promise<void>{const validation=validateCoachReviewFeedback(feedback);if(!validation.ok)throw new Error(validation.errors.join(' '));const db=await database();const review=await db.getFirstAsync('SELECT id FROM coach_reviews WHERE id=?',feedback.reviewId);if(!review)throw new Error('The reviewed coaching record does not exist locally.');await db.withTransactionAsync(async()=>{await db.runAsync('INSERT INTO coach_review_feedback (id,owner_id,review_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,NULL,?,?,?,?,?,?) ON CONFLICT(review_id) DO UPDATE SET id=excluded.id,profile_id=excluded.profile_id,profile_revision=excluded.profile_revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at >= coach_review_feedback.updated_at',feedback.id,feedback.reviewId,feedback.profileId,feedback.profileRevision,JSON.stringify(validation.value),feedback.createdAt,feedback.updatedAt);await enqueueWithDatabase(db,'coach_review_feedback',feedback.reviewId,'upsert',validation.value)})}
 
-export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[]; coachFeedback: any[] }) {
+type CoachProposalRow = { id: string; owner_id: string | null; payload: string; status: CoachRoutineProposalStatus; applied_routine_id: string | null; decided_at: string | null };
+function parseCoachProposal(row: CoachProposalRow): CoachRoutineProposalItem {
+  const validation = validateStoredCoachRoutineProposal(JSON.parse(row.payload));
+  if (!validation.ok) throw new Error(`Stored routine proposal is invalid: ${validation.errors.join(' ')}`);
+  return { record: validation.value, status: row.status, appliedRoutineId: row.applied_routine_id, decidedAt: row.decided_at };
+}
+
+export async function listCoachRoutineProposals(includeDecided = false): Promise<CoachRoutineProposalItem[]> {
+  const db = await database();
+  const rows = await db.getAllAsync<CoachProposalRow>(`SELECT id,owner_id,payload,status,applied_routine_id,decided_at FROM coach_routine_proposals ${includeDecided ? '' : "WHERE status='pending'"} ORDER BY published_at DESC`);
+  return rows.map(parseCoachProposal);
+}
+
+export async function getCoachRoutineProposal(id: string): Promise<CoachRoutineProposalItem | null> {
+  const db = await database();
+  const row = await db.getFirstAsync<CoachProposalRow>('SELECT id,owner_id,payload,status,applied_routine_id,decided_at FROM coach_routine_proposals WHERE id=?', id);
+  return row ? parseCoachProposal(row) : null;
+}
+
+export async function acceptCoachRoutineProposal(id: string): Promise<string> {
+  const db = await database();
+  let appliedId: string | null = null;
+  await serializeProposalSyncTransaction(() => db.withExclusiveTransactionAsync(async (txn) => {
+    const row = await txn.getFirstAsync<CoachProposalRow>('SELECT id,owner_id,payload,status,applied_routine_id,decided_at FROM coach_routine_proposals WHERE id=?', id);
+    if (!row) throw new Error('Routine proposal not found.');
+    if (row.status === 'accepted' && row.applied_routine_id) { appliedId = row.applied_routine_id; return; }
+    if (row.status !== 'pending') throw new Error('This proposal was already declined.');
+    const { record } = parseCoachProposal(row);
+    const source = record.sourceRoutine;
+    const sourceRow = source ? await txn.getFirstAsync<RoutineRow>('SELECT * FROM routines WHERE id=?', source.id) : null;
+    const sourceItems = sourceRow ? await txn.getAllAsync<{ exercise_id: string; sort_order: number; set_count: number }>('SELECT exercise_id,sort_order,set_count FROM routine_exercises WHERE routine_id=? ORDER BY sort_order', sourceRow.id) : [];
+    const current = sourceRow ? { id: sourceRow.id, name: sourceRow.name, updatedAt: sourceRow.updated_at, archived: !!sourceRow.archived, exercises: sourceItems.map((item) => ({ exerciseId: item.exercise_id, sortOrder: item.sort_order, setCount: item.set_count })) } : null;
+    if (!source && await txn.getFirstAsync('SELECT id FROM routines WHERE archived=0 LIMIT 1')) throw new Error('You have created a routine since this starter proposal. Request a fresh recommendation.');
+    if (!sourceRoutineStillMatches(source, current)) throw new Error('The source routine changed after Coach created this proposal. Request a fresh recommendation.');
+    for (const exercise of record.proposal.exercises) {
+      const available = await txn.getFirstAsync<{ id: string }>('SELECT id FROM exercises WHERE id=? AND archived=0 AND (owner_id IS NULL OR owner_id=?)', exercise.exerciseId, row.owner_id);
+      if (!available) throw new Error('A proposed exercise is no longer available in your library.');
+    }
+    const timestamp = now();
+    const routineId = makeId();
+    const routineExercises = record.proposal.exercises.map((item, index) => ({ id: makeId(), routineId, exerciseId: item.exerciseId, sortOrder: index, setCount: item.setCount }));
+    await txn.runAsync('INSERT INTO routines (id,owner_id,name,created_at,updated_at,archived) VALUES (?,?,?,?,?,0)', routineId, row.owner_id, record.proposal.name.trim(), timestamp, timestamp);
+    for (const item of routineExercises) await txn.runAsync('INSERT INTO routine_exercises (id,routine_id,exercise_id,sort_order,set_count,updated_at) VALUES (?,?,?,?,?,?)', item.id, routineId, item.exerciseId, item.sortOrder, item.setCount, timestamp);
+    await txn.runAsync("UPDATE coach_routine_proposals SET status='accepted',applied_routine_id=?,decided_at=? WHERE id=? AND status='pending'", routineId, timestamp, id);
+    await enqueueWithDatabase(txn, 'routine', routineId, 'snapshot', { id: routineId, ownerId: row.owner_id, name: record.proposal.name.trim(), createdAt: timestamp, updatedAt: timestamp, archived: false, exercises: routineExercises });
+    await enqueueWithDatabase(txn, 'coach_proposal_decision', id, 'update', { status: 'accepted', applied_routine_id: routineId, decided_at: timestamp });
+    appliedId = routineId;
+  }));
+  if (!appliedId) throw new Error('Could not apply the routine proposal.');
+  return appliedId;
+}
+
+export async function dismissCoachRoutineProposal(id: string): Promise<void> {
+  const db = await database();
+  await serializeProposalSyncTransaction(() => db.withExclusiveTransactionAsync(async (txn) => {
+    const row = await txn.getFirstAsync<CoachProposalRow>('SELECT id,owner_id,payload,status,applied_routine_id,decided_at FROM coach_routine_proposals WHERE id=?', id);
+    if (!row) throw new Error('Routine proposal not found.');
+    if (row.status === 'dismissed') return;
+    if (row.status !== 'pending') throw new Error('This proposal was already accepted.');
+    const timestamp = now();
+    await txn.runAsync("UPDATE coach_routine_proposals SET status='dismissed',decided_at=? WHERE id=? AND status='pending'", timestamp, id);
+    await enqueueWithDatabase(txn, 'coach_proposal_decision', id, 'update', { status: 'dismissed', applied_routine_id: null, decided_at: timestamp });
+  }));
+}
+
+export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[]; workouts: any[]; preference: any | null; coachingProfiles: any[]; coachingCheckIns: any[]; coachReviews: any[]; coachingRequests: any[]; coachFeedback: any[]; coachProposals: any[] }) {
   const db = await database();
   const remoteReviews = classifyRemoteCoachReviews(bundle.coachReviews);
   for (const [id, errors] of remoteReviews.rejected) console.warn(`[sync] quarantined invalid remote coach review ${id}:`, errors.join(' '));
-  await db.withTransactionAsync(async () => {
+  await serializeProposalSyncTransaction(() => db.withTransactionAsync(async () => {
     for (const e of bundle.exercises) await db.runAsync(`INSERT INTO exercises VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,name=excluded.name,muscle_group=excluded.muscle_group,equipment=excluded.equipment,type=excluded.type,archived=excluded.archived,updated_at=excluded.updated_at WHERE excluded.updated_at > exercises.updated_at`, e.id,e.owner_id,e.name,e.muscle_group,e.equipment,e.type,e.is_custom?1:0,e.archived?1:0,e.updated_at);
     for (const r of bundle.routines) {
       const local = await db.getFirstAsync<{updated_at:string}>('SELECT updated_at FROM routines WHERE id=?',r.id);
@@ -630,5 +717,27 @@ export async function mergeRemoteData(bundle: { exercises: any[]; routines: any[
       await db.runAsync('INSERT INTO coaching_generation_requests (id,owner_id,generation_key,context,status,attempts,next_attempt_at,last_error,review_id,requested_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id,status=excluded.status,attempts=excluded.attempts,next_attempt_at=excluded.next_attempt_at,last_error=excluded.last_error,review_id=excluded.review_id,updated_at=excluded.updated_at WHERE excluded.updated_at > coaching_generation_requests.updated_at', row.id, row.owner_id, row.generation_key, JSON.stringify(row.context), row.status, row.attempts, row.next_attempt_at, row.last_error, row.review_id, row.requested_at, row.updated_at);
     }
     for(const row of bundle.coachFeedback){const validation=validateCoachReviewFeedback(row.payload);if(!validation.ok)throw new Error(`Remote coach feedback is invalid: ${validation.errors.join(' ')}`);const feedback=validation.value;await db.runAsync('INSERT INTO coach_review_feedback (id,owner_id,review_id,profile_id,profile_revision,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(review_id) DO UPDATE SET id=excluded.id,owner_id=excluded.owner_id,profile_id=excluded.profile_id,profile_revision=excluded.profile_revision,payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at > coach_review_feedback.updated_at',feedback.id,row.owner_id,feedback.reviewId,feedback.profileId,feedback.profileRevision,JSON.stringify(feedback),feedback.createdAt,feedback.updatedAt)}
-  });
+    for (const row of bundle.coachProposals) {
+      const validation = validateStoredCoachRoutineProposal(row.payload);
+      const validDecision = ['pending', 'accepted', 'dismissed'].includes(row.status)
+        && (row.status === 'pending' ? !row.decided_at && !row.applied_routine_id : row.status === 'dismissed' ? !!row.decided_at && !row.applied_routine_id : !!row.decided_at && !!row.applied_routine_id);
+      if (!validation.ok || !validDecision || (validation.ok && (validation.value.id !== row.id || validation.value.reviewId !== row.review_id || validation.value.generationKey !== row.generation_key))) {
+        console.warn(`[sync] quarantined invalid routine proposal ${row.id}`);
+        continue;
+      }
+      const record = validation.value;
+      const review = await db.getFirstAsync<{ owner_id: string | null; generation_key: string }>('SELECT owner_id,generation_key FROM coach_reviews WHERE id=?', record.reviewId);
+      if (!review || review.owner_id !== row.owner_id || review.generation_key !== record.generationKey) {
+        console.warn(`[sync] quarantined routine proposal ${row.id} without a matching owned review`);
+        continue;
+      }
+      const local = await db.getFirstAsync<{ payload: string }>('SELECT payload FROM coach_routine_proposals WHERE id=?', record.id);
+      if (local && local.payload !== JSON.stringify(record)) {
+        console.warn(`[sync] quarantined changed immutable routine proposal ${row.id}`);
+        continue;
+      }
+      await db.runAsync('INSERT OR IGNORE INTO coach_routine_proposals (id,owner_id,review_id,generation_key,payload,status,applied_routine_id,decided_at,published_at) VALUES (?,?,?,?,?,?,?,?,?)', record.id, row.owner_id, record.reviewId, record.generationKey, JSON.stringify(record), row.status, row.applied_routine_id, row.decided_at, record.publishedAt);
+      if (row.decided_at) await db.runAsync("UPDATE coach_routine_proposals SET status=?,applied_routine_id=?,decided_at=? WHERE id=? AND (decided_at IS NULL OR decided_at < ?)", row.status, row.applied_routine_id, row.decided_at, record.id, row.decided_at);
+    }
+  }));
 }

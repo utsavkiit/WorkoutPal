@@ -7,6 +7,7 @@ import { CoachingCheckInV1, CoachingProfileV1 } from '../coaching/goals';
 import { StoredCoachReviewV1 } from '../coaching/reviews';
 import { CoachingGenerationRequestV1 } from '../coaching/workflow';
 import { CoachReviewFeedbackV1 } from '../coaching/feedback';
+import { isJwtIssuedAtFuture, retryJwtIssuedAtFuture } from './syncRetry';
 
 const exerciseRow = (e: any, ownerId: string) => ({ id: e.id, owner_id: ownerId, name: e.name, muscle_group: e.muscleGroup, equipment: e.equipment, type: e.type, is_custom: true, archived: false, updated_at: e.updated_at });
 const errorMessage = (error: unknown) => {
@@ -17,6 +18,7 @@ const errorMessage = (error: unknown) => {
 
 export async function pushPending(session: Session) {
   if (!supabase) return 'offline' as const;
+  const client = supabase;
   const network = await Network.getNetworkStateAsync();
   if (!network.isConnected) return 'offline' as const;
   await attachLocalOwner(session.user.id);
@@ -125,6 +127,9 @@ export async function pushPending(session: Session) {
         const feedback=payload as CoachReviewFeedbackV1;
         const {error}=await supabase.from('coach_review_feedback').upsert({id:feedback.id,owner_id:session.user.id,review_id:feedback.reviewId,profile_id:feedback.profileId,profile_revision:feedback.profileRevision,feedback_version:feedback.feedbackVersion,payload:feedback,created_at:feedback.createdAt,updated_at:feedback.updatedAt},{onConflict:'owner_id,review_id'});
         if(error)throw error;
+      } else if(item.entity==='coach_proposal_decision'){
+        const {error}=await supabase.from('coach_routine_proposals').update({status:payload.status,applied_routine_id:payload.applied_routine_id,decided_at:payload.decided_at}).eq('id',item.entity_id).eq('owner_id',session.user.id).eq('status','pending');
+        if(error)throw error;
       } else if(item.entity==='coach_data_delete'){
         const {error}=await supabase.rpc('delete_my_coaching_data');
         if(error)throw error;
@@ -133,29 +138,38 @@ export async function pushPending(session: Session) {
     } catch (error) {
       failed = true;
       const message = errorMessage(error);
-      console.error(`[sync] ${item.entity} ${item.operation} failed:`, message);
+      if (isJwtIssuedAtFuture(error)) console.warn(`[sync] ${item.entity} ${item.operation} deferred because Supabase JWT validation is temporarily behind`);
+      else console.error(`[sync] ${item.entity} ${item.operation} failed:`, message);
       await failOutbox(item.id, message);
     }
   }
   if (!failed) {
-    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests,coachFeedback]=await Promise.all([
-      supabase.from('exercises').select('*').eq('owner_id',session.user.id),
-      supabase.from('routines').select('*,routine_exercises(*)').eq('owner_id',session.user.id),
-      supabase.from('workout_sessions').select('*,workout_exercises(*,workout_sets(*))').eq('owner_id',session.user.id).eq('status','completed'),
-      supabase.from('user_preferences').select('*').eq('user_id',session.user.id).maybeSingle(),
-      supabase.from('coaching_profiles').select('*').eq('owner_id',session.user.id).order('effective_at', { ascending: false }),
-      supabase.from('coaching_check_ins').select('*').eq('owner_id',session.user.id).order('created_at', { ascending: false }),
-      supabase.from('coach_reviews').select('*').eq('owner_id',session.user.id).order('period_end', { ascending: false }),
-      supabase.from('coaching_generation_requests').select('*').eq('owner_id',session.user.id).order('requested_at', { ascending: false }),
-      supabase.from('coach_review_feedback').select('*').eq('owner_id',session.user.id).order('updated_at',{ascending:false}),
+    const pull = () => Promise.all([
+      client.from('exercises').select('*').eq('owner_id',session.user.id),
+      client.from('routines').select('*,routine_exercises(*)').eq('owner_id',session.user.id),
+      client.from('workout_sessions').select('*,workout_exercises(*,workout_sets(*))').eq('owner_id',session.user.id).eq('status','completed'),
+      client.from('user_preferences').select('*').eq('user_id',session.user.id).maybeSingle(),
+      client.from('coaching_profiles').select('*').eq('owner_id',session.user.id).order('effective_at', { ascending: false }),
+      client.from('coaching_check_ins').select('*').eq('owner_id',session.user.id).order('created_at', { ascending: false }),
+      client.from('coach_reviews').select('*').eq('owner_id',session.user.id).order('period_end', { ascending: false }),
+      client.from('coaching_generation_requests').select('*').eq('owner_id',session.user.id).order('requested_at', { ascending: false }),
+      client.from('coach_review_feedback').select('*').eq('owner_id',session.user.id).order('updated_at',{ascending:false}),
+      client.from('coach_routine_proposals').select('*').eq('owner_id',session.user.id).order('published_at',{ascending:false}),
     ]);
-    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error??coachFeedback.error;
+    const pullErrorFor = ([exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests,coachFeedback,coachProposals]: Awaited<ReturnType<typeof pull>>) => exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error??coachFeedback.error??coachProposals.error;
+    const [exercises,routines,workouts,preference,coachingProfiles,coachingCheckIns,coachReviews,coachingRequests,coachFeedback,coachProposals]=await retryJwtIssuedAtFuture(
+      pull,
+      pullErrorFor,
+      { onRetry: (attempt, delayMs) => console.info(`[sync] Supabase JWT validation is temporarily behind; retrying pull ${attempt} after ${delayMs}ms`) },
+    );
+    const pullError=exercises.error??routines.error??workouts.error??preference.error??coachingProfiles.error??coachingCheckIns.error??coachReviews.error??coachingRequests.error??coachFeedback.error??coachProposals.error;
     if (pullError) {
       failed=true;
-      console.error('[sync] pull failed:', pullError.message);
+      if (isJwtIssuedAtFuture(pullError)) console.warn('[sync] pull deferred because Supabase JWT validation is temporarily behind');
+      else console.error('[sync] pull failed:', pullError.message);
     } else {
       try {
-        await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[],coachFeedback:coachFeedback.data??[]});
+        await mergeRemoteData({exercises:exercises.data??[],routines:routines.data??[],workouts:workouts.data??[],preference:preference.data,coachingProfiles:coachingProfiles.data??[],coachingCheckIns:coachingCheckIns.data??[],coachReviews:coachReviews.data??[],coachingRequests:coachingRequests.data??[],coachFeedback:coachFeedback.data??[],coachProposals:coachProposals.data??[]});
       } catch (error) {
         failed=true;
         console.error('[sync] merge failed:', errorMessage(error));

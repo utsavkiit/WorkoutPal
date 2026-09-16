@@ -42,6 +42,59 @@ insert into public.coaching_agent_credentials(owner_id,token_hash,created_at,upd
 insert into public.coach_review_feedback(id,owner_id,review_id,profile_id,profile_revision,feedback_version,payload,created_at,updated_at) values
   ('90000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','60000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',1,1,jsonb_build_object('feedbackVersion',1,'id','90000000-0000-4000-8000-000000000001','reviewId','60000000-0000-4000-8000-000000000001','profileId','40000000-0000-4000-8000-000000000001','profileRevision',1,'usefulness','helpful','tone','right'),now(),now()),
   ('90000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','60000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000002',1,1,jsonb_build_object('feedbackVersion',1,'id','90000000-0000-4000-8000-000000000002','reviewId','60000000-0000-4000-8000-000000000002','profileId','40000000-0000-4000-8000-000000000002','profileRevision',1,'usefulness','helpful','tone','right'),now(),now());
+insert into public.coaching_generation_requests(id,owner_id,generation_key,request_version,context_version,profile_id,profile_revision,period_start,period_end,context,status,attempts,review_id,requested_at,updated_at)
+select ('71000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid, r.owner_id, review.generation_key,1,1,
+  ('40000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,1,'2026-09-01','2026-09-07',
+  jsonb_build_object('generationKey',review.generation_key,'contextVersion',1,'profile',jsonb_build_object('id','40000000-0000-4000-8000-'||lpad(n::text,12,'0'),'revision',1),
+    'currentRoutine',jsonb_build_object('id',r.id,'name',r.name,'version',to_char(r.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      'exercises',jsonb_build_array(jsonb_build_object('exerciseId',r.id,'name','RLS fixture','sortOrder',0,'setCount',1))),
+    'exerciseCatalog',jsonb_build_array(jsonb_build_object('id',r.id,'name','RLS fixture','muscleGroup','Core','equipment','Bodyweight','type','bodyweight')),
+    'evidenceWorkouts','[]'::jsonb),
+  'ready',0,review.id,now(),now()
+from generate_series(1,2) n
+join public.routines r on r.id=('20000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid
+join public.coach_reviews review on review.id=('60000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid;
+do $publish_proposal$
+declare n integer; request_id uuid; proposal_id uuid; duplicate_id uuid;
+begin
+  for n in 1..2 loop
+    request_id := ('71000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid;
+    proposal_id := public.publish_coach_routine_proposal_v1(request_id,jsonb_build_object('name','RLS fixture next','summary','Keep the lift; give it a fresh name.',
+      'exercises',jsonb_build_array(jsonb_build_object('exerciseId','20000000-0000-4000-8000-'||lpad(n::text,12,'0'),'setCount',1,'rationale','Keep this exercise.')),
+      'removed','[]'::jsonb,'limitations','[]'::jsonb));
+    duplicate_id := public.publish_coach_routine_proposal_v1(request_id,jsonb_build_object('name','Ignored duplicate','summary','A second publish should not change the first.',
+      'exercises',jsonb_build_array(jsonb_build_object('exerciseId','20000000-0000-4000-8000-'||lpad(n::text,12,'0'),'setCount',1,'rationale','Keep this exercise.')),
+      'removed','[]'::jsonb,'limitations','[]'::jsonb));
+    if duplicate_id <> proposal_id then raise exception 'Proposal publication is not idempotent'; end if;
+  end loop;
+end $publish_proposal$;
+insert into public.coach_reviews(id,owner_id,generation_key,storage_version,contract_version,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,payload,published_at)
+values('60000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001','rls-proposal-invalid',1,1,'40000000-0000-4000-8000-000000000001',1,1,'2026-09-01','2026-09-07',null,
+  pg_temp.coach_review_payload('60000000-0000-4000-8000-000000000003','rls-proposal-invalid','40000000-0000-4000-8000-000000000001',now()),now());
+insert into public.coaching_generation_requests(id,owner_id,generation_key,request_version,context_version,profile_id,profile_revision,period_start,period_end,context,status,attempts,review_id,requested_at,updated_at)
+select '71000000-0000-4000-8000-000000000003',owner_id,'rls-proposal-invalid',request_version,context_version,profile_id,profile_revision,period_start,period_end,
+  jsonb_set(context,'{generationKey}','"rls-proposal-invalid"'::jsonb),'ready',0,'60000000-0000-4000-8000-000000000003',now(),now()
+from public.coaching_generation_requests where id='71000000-0000-4000-8000-000000000001';
+do $invalid_proposal$
+declare accepted boolean; draft jsonb; request_id uuid := '71000000-0000-4000-8000-000000000003';
+begin
+  draft := jsonb_build_object('name','RLS fixture','summary','No real change.',
+    'exercises',jsonb_build_array(jsonb_build_object('exerciseId','20000000-0000-4000-8000-000000000001','setCount',1,'rationale','Keep it.')),
+    'removed','[]'::jsonb,'limitations','[]'::jsonb);
+  accepted := false;
+  begin perform public.publish_coach_routine_proposal_v1(request_id,draft); accepted := true; exception when others then null; end;
+  if accepted then raise exception 'No-op routine proposal was published'; end if;
+  draft := jsonb_set(draft,'{name}','"Changed name"'::jsonb);
+  draft := jsonb_set(draft,'{exercises,0,rationale}','""'::jsonb);
+  accepted := false;
+  begin perform public.publish_coach_routine_proposal_v1(request_id,draft); accepted := true; exception when others then null; end;
+  if accepted then raise exception 'Unexplained routine proposal was published'; end if;
+  draft := jsonb_set(draft,'{exercises,0,rationale}','"Keep it."'::jsonb);
+  draft := jsonb_set(draft,'{exercises,0,exerciseId}','"99999999-0000-4000-8000-000000000001"'::jsonb);
+  accepted := false;
+  begin perform public.publish_coach_routine_proposal_v1(request_id,draft); accepted := true; exception when others then null; end;
+  if accepted then raise exception 'Unknown exercise routine proposal was published'; end if;
+end $invalid_proposal$;
 set local role authenticated;
 do $test$
 declare n integer; t text; own_id uuid; other_id uuid; own_user uuid; other_user uuid; c integer;
@@ -207,6 +260,45 @@ begin
   exception when insufficient_privilege then null;
   end;
 end $test_feedback_rls$;
+
+do $test_proposal_rls$
+declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; mine uuid; theirs uuid; c integer;
+begin
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  select id into mine from public.coach_routine_proposals where owner_id=owner1;
+  perform set_config('request.jwt.claim.sub',owner2::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner2,'role','authenticated')::text,true);
+  select id into theirs from public.coach_routine_proposals where owner_id=owner2;
+  perform set_config('request.jwt.claim.sub',owner1::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner1,'role','authenticated')::text,true);
+  select count(*) into c from public.coach_routine_proposals where id=mine;
+  if c<>1 then raise exception 'Own routine proposal hidden'; end if;
+  select count(*) into c from public.coach_routine_proposals where id=theirs;
+  if c<>0 then raise exception 'Other routine proposal exposed'; end if;
+  update public.coach_routine_proposals set status='dismissed',decided_at=now() where id=theirs;
+  get diagnostics c=row_count;
+  if c<>0 then raise exception 'Other routine proposal decision allowed'; end if;
+  begin
+    update public.coach_routine_proposals set status='accepted',applied_routine_id='20000000-0000-4000-8000-000000000002',decided_at=now() where id=mine;
+    raise exception 'Cross-owner routine application allowed';
+  exception when insufficient_privilege then null;
+  end;
+  update public.coach_routine_proposals set status='accepted',applied_routine_id='20000000-0000-4000-8000-000000000001',decided_at=now() where id=mine;
+  get diagnostics c=row_count;
+  if c<>1 then raise exception 'Own routine proposal decision blocked'; end if;
+  begin
+    update public.coach_routine_proposals set payload='{}' where id=mine;
+    raise exception 'Immutable routine proposal payload update allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.coach_routine_proposals(id,owner_id,review_id,generation_key,storage_version,proposal_version,payload,published_at)
+      values(gen_random_uuid(),owner1,'60000000-0000-4000-8000-000000000001','rls-owner-1',1,1,'{}',now());
+    raise exception 'Client routine proposal insert allowed';
+  exception when insufficient_privilege then null;
+  end;
+end $test_proposal_rls$;
 
 do $test_coaching_delete$
 declare owner1 uuid := '10000000-0000-4000-8000-000000000001'; owner2 uuid := '10000000-0000-4000-8000-000000000002'; c integer;

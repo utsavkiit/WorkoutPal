@@ -1,6 +1,7 @@
 import { CoachingCheckInV1, CoachingProfileV1 } from './goals';
 import { WeeklyCoachingMetricsV1 } from './metrics';
 import { Routine, WorkoutSession } from '../types';
+import { SEEDED_EXERCISES } from '../data/exercises';
 
 export const COACHING_CONTEXT_VERSION = 1 as const;
 export const MAX_CONTEXT_WORKOUTS = 24;
@@ -26,6 +27,7 @@ export interface CoachingContextV1 {
     version: string;
     exercises: { exerciseId: string; name: string; sortOrder: number; setCount: number }[];
   };
+  exerciseCatalog?: { id: string; name: string; muscleGroup: string; equipment: string; type: string }[];
   metrics: WeeklyCoachingMetricsV1;
   evidenceWorkouts: {
     id: string;
@@ -79,7 +81,7 @@ export function buildCoachingContext(input: {
   const included = eligible.slice(0, MAX_CONTEXT_WORKOUTS);
   const checkIns = input.profile.consent.includeCheckIns ? (input.checkIns ?? []).slice(0, 4) : [];
   const historyFingerprint = included.map((workout) => `${workout.id}:${workout.updatedAt}`).sort().join('|');
-  const supplementalFingerprint = JSON.stringify({ routineVersion: input.currentRoutine?.updatedAt ?? null, checkIns: checkIns.map((item) => [item.id, item.updatedAt]), priorReviewDecision: input.priorReviewDecision ?? null });
+  const supplementalFingerprint = JSON.stringify({ routineVersion: input.currentRoutine?.updatedAt ?? null, exerciseCatalogVersion: 1, checkIns: checkIns.map((item) => [item.id, item.updatedAt]), priorReviewDecision: input.priorReviewDecision ?? null });
   const generationKey = [
     `coach-v${COACHING_CONTEXT_VERSION}`,
     input.profile.id,
@@ -101,6 +103,7 @@ export function buildCoachingContext(input: {
       version: input.currentRoutine.updatedAt,
       exercises: input.currentRoutine.exercises.slice(0, 20).map((item) => ({ exerciseId: item.exerciseId, name: item.exercise?.name ?? 'Unknown exercise', sortOrder: item.sortOrder, setCount: item.setCount })),
     } : null,
+    exerciseCatalog: SEEDED_EXERCISES.map((item) => ({ id: item.id, name: item.name, muscleGroup: item.muscleGroup, equipment: item.equipment, type: item.type })),
     metrics: input.metrics,
     evidenceWorkouts: included.map((workout) => ({
       id: workout.id,

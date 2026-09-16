@@ -1,6 +1,6 @@
 # WorkoutPal coaching agent guide
 
-Status: Contract v1 foundation. Review publishing is not connected to persistence yet.
+Status: Review contract v1 and optional pending routine proposal v1 are connected to persistence. Physical-iPhone proposal adoption remains to be verified.
 
 ## Purpose
 
@@ -15,13 +15,17 @@ Contract v1 accepts two review kinds:
 - `weekly_review`: enough completed training exists for evidence-backed observations.
 - `continuity_check_in`: too little new data exists for a meaningful review; provide a non-judgmental re-entry step without inventing activity.
 
-Routine proposal publishing is intentionally unsupported in v1. Do not write or mutate routines, goals, workouts, or workout sets.
+After publishing a review, an agent may publish at most one pending routine proposal for that review. The agent must never write or mutate routines, goals, workouts, or workout sets.
 
 ## Publishing boundary
 
 The agent returns one JSON object matching `CoachReviewDraftV1`. For direct Supabase MCP access, publish only through `public.publish_coach_review_v1(request_id, review_json)`; the database function binds ownership, IDs, versions, generation key, review dates, latest included workout, and timestamps before persistence. Contract v1 rejects unexpected fields, including ownership and routine-proposal fields, and requires WorkoutPal to appear as the baseline context source.
 
 The model output never supplies the owning user ID. Ownership comes from the authenticated publishing boundary. Reject the entire payload when validation fails; never partially save or silently repair it.
+
+For a supported routine recommendation, call `public.publish_coach_routine_proposal_v1(request_id, proposal_json)` after the review is ready. Supply exactly `name`, `summary`, ordered `exercises` (`exerciseId`, `setCount`, `rationale`), `removed` (`exerciseId`, `rationale`), and `limitations`. The database binds the source routine snapshot, review, generation key, owner, versions, ID, and publication time. Valid IDs must appear in the request's seeded exercise catalog, current routine, or evidence workouts and remain available in the owner's exercise library. A proposal cannot be a no-op, omit a removal explanation, repeat an exercise, exceed 12 exercises or 36 sets, or add more than six sets to the source routine. Only the user can accept or decline it in WorkoutPal. An acceptance makes a new routine and preserves the source and any active workout.
+
+This proposal version uses only fields WorkoutPal already saves: name, exercise order, and set count. Rep ranges, weights, rest times, and other targets must wait until those routine fields are implemented and tested.
 
 Required protections before a database publisher is implemented:
 

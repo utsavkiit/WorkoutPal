@@ -1,6 +1,6 @@
 # WorkoutPal Kanban
 
-Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone this session; on-device results are still pending from the user.
+Updated: September 16, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone; on-device results are still pending from the user.
 
 ## Workflow
 
@@ -12,11 +12,11 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032/AIC-017 repaired and hardened the first live ChatGPT/Supabase MCP publish. The corrected review is ready for physical-iPhone confirmation. QA-004 remains blocked on disk space.
-- Changes: Repaired the invalid remote payload, added/applied a validated database publisher and complete review constraint, updated agent instructions, and made app sync quarantine invalid remote coaching rows rather than crashing.
-- Validation: The repaired row passes WorkoutPal validation; live publisher and malformed-update checks pass; migrations are in parity; typecheck, 48/48 tests, iOS export, two-user RLS, security advisors, and diff check pass. Only the pre-existing leaked-password-protection warning remains. Direct DB lint lacked password-path authentication.
-- Exact next action: Unlock the iPhone, reload WorkoutPal, and confirm the review opens without the red screen; then complete the remaining AIC-017 access/device review.
-- Prior context: AIC-006/AIC-011/AIC-016 and WP-009/WP-010/WP-031 remain in Verify; AIC-013–AIC-015 remain dependency-gated.
+- Current: WP-032/AIC-019 user-requested routine recommendation MVP is implemented but in Verify on `feature/ai-coach`, together with a mitigation for Supabase's active PGRST303 future-JWT incident. QA-004 remains disk-space blocked.
+- Changes: Added narrow pending proposal publishing, contract/local/cloud storage, Coach comparison and Accept/Decline, atomic creation of a separate saved routine, and stale/owner guards. Sync pulls now retry only `PGRST303: JWT issued at future` with bounded backoff; exhausted pulls and durable outbox deferrals no longer raise the development error overlay. The linked migrations and legacy agent Function v4 are deployed. Detailed proposal state is in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md).
+- Validation: Typecheck, 55/55 tests, iOS export, migration parity, live rollback publisher/invalid-output/two-user RLS, diff check, and an HTTP 200 live Data API probe pass. Real agent publish, physical-iPhone future-JWT retry, and offline/restart/sync/accessibility adoption remain unverified. Advisors warn about the existing intentional deletion RPC and disabled leaked-password protection.
+- Exact next action: Reload the development app on the iPhone and trigger sync after a fresh/restored session; confirm future-JWT failures recover without LogBox. Then use the connected agent to publish one justified proposal and verify offline Accept/Decline, restart/sync, active-workout preservation, and accessibility; finish AIC-017 security/device review before rollout.
+- Prior context: AIC-006/AIC-011/AIC-016/AIC-017 and WP-009/WP-010/WP-031 remain in Verify; target-aware/edit proposal tasks AIC-013–AIC-015 remain after WP-013–015.
 
 ## Ready
 
@@ -27,7 +27,7 @@ Updated: September 12, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## In progress
 
-- **WP-032 AI coaching:** Build the external-agent-driven weekly review and later user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-004 is next.
+- **WP-032 AI coaching:** Build the external-agent-driven weekly review and user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-019 is in Verify.
 
 ## Verify
 

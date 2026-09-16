@@ -104,7 +104,7 @@ Deno.serve(async (request) => {
   try { body = await request.json(); } catch { return response({ error: 'Body must be JSON.' }, 400); }
   if (!record(body) || JSON.stringify(body).length > 100_000) return response({ error: 'Request body is too large.' }, 413);
   if (!text(body.generationKey, 160)) return response({ error: 'generationKey is required.' }, 400);
-  const allowedEnvelope = body.action === 'publish' ? ['action','generationKey','review'] : ['action','generationKey','retryable','error'];
+  const allowedEnvelope = body.action === 'publish' ? ['action','generationKey','review','proposal'] : ['action','generationKey','retryable','error'];
   if (unexpected(body, allowedEnvelope).length) return response({ error: 'Request contains unsupported fields.' }, 400);
   const requestRow = await admin.from('coaching_generation_requests').select('*').eq('owner_id', ownerId).eq('generation_key', body.generationKey).maybeSingle();
   if (requestRow.error || !requestRow.data) return response({ error: 'Generation request not found.' }, 404);
@@ -121,6 +121,11 @@ Deno.serve(async (request) => {
   const existing = await admin.from('coach_reviews').select('id').eq('owner_id', ownerId).eq('generation_key', body.generationKey).maybeSingle();
   if (existing.data) {
     await admin.from('coaching_generation_requests').update({ status: 'ready', review_id: existing.data.id, last_error: null, next_attempt_at: null, updated_at: new Date().toISOString() }).eq('id', requestRow.data.id);
+    if (body.proposal !== undefined) {
+      const proposalResult = await admin.rpc('publish_coach_routine_proposal_v1', { p_request_id: requestRow.data.id, p_proposal: body.proposal });
+      if (proposalResult.error) return response({ error: 'Routine proposal validation failed.', details: proposalResult.error.message, reviewId: existing.data.id }, 422);
+      return response({ status: 'ready', reviewId: existing.data.id, proposalId: proposalResult.data, duplicate: true });
+    }
     return response({ status: 'ready', reviewId: existing.data.id, duplicate: true });
   }
   const id = crypto.randomUUID(); const publishedAt = new Date().toISOString();
@@ -128,5 +133,11 @@ Deno.serve(async (request) => {
   const insert = await admin.from('coach_reviews').insert({ id, owner_id: ownerId, generation_key: body.generationKey, storage_version: 1, contract_version: 1, profile_id: requestRow.data.profile_id, profile_revision: requestRow.data.profile_revision, context_version: requestRow.data.context_version, period_start: body.review.periodStart, period_end: body.review.periodEnd, latest_workout_id: body.review.latestWorkoutId, payload: record, published_at: publishedAt });
   if (insert.error) return response({ error: insert.error.message }, 422);
   const ready = await admin.from('coaching_generation_requests').update({ status: 'ready', review_id: id, last_error: null, next_attempt_at: null, updated_at: publishedAt }).eq('id', requestRow.data.id);
-  return ready.error ? response({ error: ready.error.message }, 500) : response({ status: 'ready', reviewId: id, duplicate: false });
+  if (ready.error) return response({ error: ready.error.message }, 500);
+  if (body.proposal !== undefined) {
+    const proposalResult = await admin.rpc('publish_coach_routine_proposal_v1', { p_request_id: requestRow.data.id, p_proposal: body.proposal });
+    if (proposalResult.error) return response({ error: 'Routine proposal validation failed.', details: proposalResult.error.message, reviewId: id }, 422);
+    return response({ status: 'ready', reviewId: id, proposalId: proposalResult.data, duplicate: false });
+  }
+  return response({ status: 'ready', reviewId: id, duplicate: false });
 });
