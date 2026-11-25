@@ -12,6 +12,7 @@ async function startAndLogSet() {
   await element(by.text('Add exercise')).tap();
   await element(by.id('exercise-search')).replaceText('Barbell Bench Press');
   await element(by.label('Add Barbell Bench Press')).tap();
+  await visible(element(by.label('Set 1 weight')));
   await element(by.label('Set 1 weight')).replaceText('135');
   await element(by.label('Set 1 reps')).replaceText('8');
   await element(by.label('Complete set')).atIndex(0).tap();
