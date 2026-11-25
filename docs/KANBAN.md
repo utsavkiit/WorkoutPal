@@ -12,11 +12,11 @@ Updated: November 25, 2026. Single-agent queue. Baseline review was code-only, n
 
 ## Handoff
 
-- Current: OPS-002 is implemented in the isolated `codex/software-factory` worktree. It adds standing end-to-end delivery authorization, a worktree assertion, reusable local gates, deterministic Release-simulator Detox coverage, a PR checklist, and hosted `Quality`/`iOS UI` jobs. PR delivery and protected-main enforcement are next.
+- Current: OPS-002 is complete in PR #1. The repository now has standing end-to-end delivery authorization, linked-worktree enforcement, reusable local gates, deterministic Release-simulator Detox coverage, a PR checklist, hosted `Quality`/`iOS UI` jobs, automatic merge enabled, and protected `main` requiring both jobs on an up-to-date PR with no force pushes, deletions, or admin bypass.
 - Decisions: Feature requests authorize the routine worktree → implementation → validation → commit → push → PR → green-only auto-merge lifecycle without repeated prompts. Physical-iPhone, authenticated-Supabase, notification, background, and accessibility checks remain explicit blockers when applicable because hosted CI cannot prove them. Direct pushes, protection bypasses, and merging around skipped/stale checks are prohibited.
-- Validation: `npm run verify:worktree`, typecheck, 7/7 unit tests, iOS export, Detox setup, clean Release-simulator build, full Detox 2/2, and `git diff --check` pass. The first native build correctly failed with only 37 MB free; after removing 4 GB of explicit ignored Xcode build output, the clean rebuild passed. Device and Supabase checks are not applicable to this workflow-only change.
-- Blockers: Hosted PR checks and `main` branch protection have not yet been exercised; do not mark OPS-002 Done or merge until both required jobs pass and protection is configured.
-- Exact next action: Commit and push `codex/software-factory`, open the PR, verify the hosted `Quality` and `iOS UI` jobs, update OPS-002 to Done, merge, then enable/confirm protected-main required checks and automatic merge for future feature PRs.
+- Validation: `npm run verify:worktree`, typecheck, 7/7 unit tests, iOS export, Detox setup, clean Release-simulator build, full local Detox 2/2, and `git diff --check` pass. Hosted PR `Quality` and `iOS UI` both pass. The hosted UI gate exposed a real keyboard/tap issue in the exercise picker; `keyboardShouldPersistTaps="handled"` fixed it and both journeys then passed locally and remotely. GitHub reports automatic merge enabled and protected `main` requiring `Quality` and `iOS UI`. Device and Supabase checks are not applicable to this workflow-only change.
+- Blockers: None for OPS-002. Applicable physical-iPhone or authenticated-Supabase checks remain blockers for future feature PRs until their evidence is recorded.
+- Exact next action: Push this final Kanban update, let the required hosted jobs pass again, merge PR #1, clean up the linked worktree, then take WP-001 from Ready unless the user changes priority.
 
 ## Ready
 
@@ -27,7 +27,7 @@ Updated: November 25, 2026. Single-agent queue. Baseline review was code-only, n
 
 ## In progress
 
-- **OPS-002 Software factory:** Require each feature to use an isolated linked worktree and complete regression coverage, local validation, commit, push, PR, required hosted checks, and green-only merge without separate prompts. Enforce the merge gate with GitHub Actions and protected `main`; retain physical-iPhone and authenticated-Supabase checks as explicit blockers when applicable.
+None.
 
 ## Verify
 
@@ -74,7 +74,7 @@ Ordered by feature priority; dependencies constrain eligibility.
 
 ## Done
 
-None.
+- **OPS-002 Software factory:** Feature work now uses isolated linked worktrees and completes regression coverage, local validation, commit, push, PR, required hosted `Quality`/`iOS UI` checks, and green-only automatic merge. Protected `main` enforces the gate; applicable physical-iPhone and authenticated-Supabase checks remain explicit blockers. PR #1.
 
 ## Code entry points
 
