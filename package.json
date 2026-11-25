@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'src/*.test.ts' 'src/**/*.test.ts'",
+    "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts",
     "verify:worktree": "bash scripts/assert-feature-worktree.sh",
     "verify:quality": "npm run typecheck && npm test && npx expo export --platform ios && git diff --check",
     "e2e:build:ios": "detox build --configuration ios.sim.release",
