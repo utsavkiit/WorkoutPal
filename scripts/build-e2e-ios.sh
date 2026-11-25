@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 export EXPO_NO_DOTENV=1
 export EXPO_PUBLIC_SUPABASE_URL='' EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=''
+export EXPO_PUBLIC_E2E_FIXTURES=1
 export NODE_ENV=production
 xcodebuild -workspace ios/WorkoutPal.xcworkspace -scheme WorkoutPal \
   -configuration Release -sdk iphonesimulator \

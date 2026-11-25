@@ -1,6 +1,6 @@
 # AI Coach feature Kanban
 
-Updated: September 15, 2026. Branch: `feature/ai-coach`.
+Updated: November 25, 2026. Branch: `feature/ai-coach`.
 
 This is the detailed source of truth for AI Coach work. The global [KANBAN.md](KANBAN.md) retains the feature-level priority and links here. Work one task at a time. Before stopping, overwrite the Handoff with current state, decisions, validation, blockers, and the exact next action.
 
@@ -15,12 +15,12 @@ This is the detailed source of truth for AI Coach work. The global [KANBAN.md](K
 
 ## Handoff
 
-- Current: User-requested AIC-019 pending routine recommendation MVP is implemented in code and the linked database, but awaits a genuine agent publish and physical-iPhone adoption checks. The prior working tree was committed/pushed as `e7d799c` before this new work; AIC-019 changes are not yet committed. AIC-017 remains unfinished in Verify.
-- Changes: Added a bounded proposal contract, seeded exercise catalog in new coaching contexts, narrow database publisher, owner-scoped proposal table/decisions, quarantine on pull, and atomic offline Accept/Decline that creates a separate saved routine only when accepted. Added a pending Coach card, comparison screen, review link, updated agent guidance, and optional proposal support in deployed `coaching-agent` Function v4.
+- Current: The user-reported AIC-019 adoption gap, zero-set active-workout trap, and undersized Resume target are fixed and pass deterministic simulator E2E. Accept exposes Start recommended workout, saved routines have direct play controls, the entire in-progress card resumes the workout, an existing active workout is never replaced, and Finish can discard an unstarted routine. Genuine-agent authenticated sync remains in Verify; AIC-017 is still unfinished.
+- Changes: Retained the bounded proposal contract, owner-scoped decisions, quarantine, and atomic offline Accept/Decline. Added explicit post-accept start UI, accessible routine play controls, active-workout guards, stable stack navigation, a full-card Resume control, a zero-set Keep/Discard prompt, and an E2E-only local proposal fixture excluded from normal builds.
 - Decisions: Initial proposals contain only currently saved routine fields (name, ordered exercise IDs, set counts); target-aware and edit-and-accept work remains AIC-013–015 after WP-013–015. The agent publishes a pending immutable snapshot only; the app checks routine freshness and exercise availability again at acceptance. Prior and active workouts remain unchanged.
-- Validation: Proposal migrations `20260915181645`/`20260915182718` are applied and in parity; the deployed Function is active v4. Typecheck, 51/51 tests, iOS export, diff check, and live rollback two-user RLS/publisher tests pass, including idempotent and malformed-output rejection. Security advisors now warn about the intentional public `delete_my_coaching_data()` security-definer RPC and pre-existing disabled leaked-password protection; performance advisors report only older-table findings.
-- Blockers: No real agent proposal or physical-iPhone Accept/Decline, offline restart/sync, active-workout, VoiceOver, or large-text journey has been exercised. AIC-017 access/device review remains open; QA-004 Simulator E2E remains disk-space blocked.
-- Exact next action: Install/reload the new app build on the physical iPhone, have the connected agent publish one justified pending proposal through `publish_coach_routine_proposal_v1` after its review, then verify accept and decline on separate proposals offline, after restart, and after sync; audit the remaining AIC-017 security warning before rollout.
+- Validation: Typecheck, 55/55 unit tests, iOS export, simulator Release build, `git diff --check`, and Detox 3/3 pass. The AIC-019 journey accepts a pending proposal, creates the saved routine, starts both prescribed exercises, terminates, relaunches, taps the full Resume card, then discards it with zero completed sets and confirms it is gone. The signed standalone physical Release also rebuilds, verifies, installs in place, and launches. All 12 linked migrations remain in parity; prior live two-user RLS/publisher checks pass.
+- Blockers: No genuine agent proposal has completed Accept/Decline plus authenticated sync on the physical iPhone. VoiceOver, large text, and AIC-017 access/device review remain open.
+- Exact next action: On the installed iPhone Release, adopt the existing genuine recommendation and confirm the new Start action, restart recovery, and later sync. Publish a separate proposal for Decline coverage, then complete VoiceOver/large-text and AIC-017 security review.
 
 ## Ready
 
@@ -32,7 +32,7 @@ None.
 
 ## Verify
 
-- **AIC-019 Routine recommendation MVP:** User-requested narrower flow: an external agent publishes one validated pending routine using current saved fields; show before/after, Accept or Decline, save a distinct routine locally on Accept, preserve source/active workout, prevent stale/duplicate application, and sync owner-scoped decisions. Implemented; typecheck/51 tests/export, remote two-user RLS and rollback publisher checks pass. Needs genuine-agent publish and physical-iPhone offline/restart/sync/accessibility checks. Full target/edit scope stays in AIC-013–015.
+- **AIC-019 Routine recommendation MVP:** User-requested narrower flow: an external agent publishes one validated pending routine using current saved fields; show before/after, Accept or Decline, save a distinct routine locally on Accept, preserve source/active workout, prevent stale/duplicate application, and sync owner-scoped decisions. The Accept → saved routine → start → restart/resume journey passes simulator E2E; typecheck/55 tests/export and prior remote two-user RLS/publisher checks pass. Needs genuine-agent physical-iPhone offline/sync/accessibility checks. Full target/edit scope stays in AIC-013–015.
 - **AIC-017 Security and privacy review:** Threat-model agent credentials, prompt injection from stored text, data minimization, consent, retention/deletion, external context, auditability, and cross-user access. Two-user ownership/publisher checks and advisors pass for the proposal path; complete device/access review and audit intentional public security-definer deletion RPC plus leaked-password-protection setting before rollout.
 - **AIC-006 Goal UI:** Build accessible My Goals and coaching-consent UI with minimal required inputs; after AIC-004. Implementation/typecheck/tests/export pass; verify VoiceOver, large text, keyboard flow, offline save/restart, and consent copy on the physical iPhone.
 - **AIC-011 Review UI:** Add Coach card, structured weekly review detail, evidence links, confidence/limitations/context visibility, archive, loading/delayed/failure states, and offline reading; after AIC-009. Implementation/typecheck/tests/export pass; verify navigation, state transitions, evidence links, VoiceOver, large text, and offline archive on the physical iPhone.

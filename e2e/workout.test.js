@@ -11,7 +11,7 @@ async function startAndLogSet() {
   await element(by.text('Start an empty workout')).tap();
   await element(by.text('Add exercise')).tap();
   await element(by.id('exercise-search')).replaceText('Barbell Bench Press');
-  await element(by.text('Barbell Bench Press')).tap();
+  await element(by.label('Add Barbell Bench Press')).tap();
   await element(by.label('Set 1 weight')).replaceText('135');
   await element(by.label('Set 1 reps')).replaceText('8');
   await element(by.label('Complete set')).atIndex(0).tap();
@@ -77,5 +77,28 @@ describe('Local workout persistence', () => {
     await launch();
     await openHistory('E2E corrected workout');
     await assertLoggedSet('140 lb', '10');
+  });
+
+  it('accepts a Coach routine and starts its saved workout', async () => {
+    await element(by.id('coach-tab')).tap();
+    await visible(element(by.label('Review routine recommendation: Coach Full Body')));
+    await element(by.label('Review routine recommendation: Coach Full Body')).tap();
+    await visible(element(by.text('Recommended routine')));
+    await element(by.text('Accept and add routine')).tap();
+    await visible(element(by.text('Start recommended workout')));
+    await element(by.text('Start recommended workout')).tap();
+    await visible(element(by.text('Coach Full Body')));
+    await expect(element(by.text('Barbell Bench Press'))).toBeVisible();
+    await expect(element(by.text('Barbell Row'))).toBeVisible();
+    await device.terminateApp();
+    await launch();
+    await element(by.id('resume-workout')).tap();
+    await expect(element(by.text('Coach Full Body'))).toBeVisible();
+    await expect(element(by.text('Barbell Bench Press'))).toBeVisible();
+    await element(by.id('finish-workout')).tap();
+    await visible(element(by.text('No completed sets')));
+    await element(by.text('Discard')).tap();
+    await visible(element(by.text('Ready to train?')));
+    await expect(element(by.id('resume-workout'))).not.toExist();
   });
 });

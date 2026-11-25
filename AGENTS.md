@@ -22,4 +22,19 @@ Use [the Kanban board](docs/KANBAN.md) as the single source of truth for priorit
 - Open `ios/WorkoutPal.xcworkspace`; use `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` for CocoaPods and Xcode commands.
 - Run `npm run typecheck`, `npm test`, and an iOS export after material changes.
 
+## Feature delivery and merge gate
+
+Every feature or behavior change must be verified before it is described as complete or merged. Agents must add or update regression coverage for the changed behavior and record the exact results in `docs/KANBAN.md`.
+
+Required checks for every feature:
+
+1. Run `npm run typecheck`, `npm test`, `npx expo export --platform ios`, and `git diff --check`.
+2. Build the self-contained Release simulator app with `npm run e2e:build:ios` and run `npm run e2e:ios`. A targeted Detox run is useful while iterating, but the full suite must pass before merge.
+3. Exercise the exact user journey introduced or repaired, including its important failure/recovery path. Add stable accessibility labels or test IDs where needed; do not replace UI assertions with sleeps or disabled synchronization.
+4. For physical-device concerns such as offline use, notifications, backgrounding, signing, or standalone launch, build/install the signed Release app on the iPhone and perform the relevant device check. Record any device step that still needs the user; do not claim it passed.
+5. For Supabase changes, verify migration parity, RLS/ownership boundaries, rollback-safe database tests, and authenticated sync where applicable. Keep SQLite writes local-first.
+6. Review the final diff for unrelated or generated files, preserve user-owned changes, and update the Kanban Handoff with evidence, blockers, and the exact next action.
+
+Do not merge a PR while any required check is failing, skipped, stale, or merely inferred. If a check cannot run, leave the task in Verify/Blocked and state the reason. Merge only after the user asks for a merge or the active task explicitly includes it; before merging, summarize the checks and their results.
+
 Current development uses local Xcode builds on a physical iPhone. Expo Go, EAS, and TestFlight are not required for the development loop.

@@ -134,6 +134,53 @@ async function initializeDatabaseOnce() {
       );
     }
   });
+  if (process.env.EXPO_PUBLIC_E2E_FIXTURES === '1') await seedE2ECoachRoutineProposal(db);
+}
+
+async function seedE2ECoachRoutineProposal(db: SQLite.SQLiteDatabase) {
+  const timestamp = '2026-11-24T12:00:00.000Z';
+  const profileId = '91000000-0000-4000-8000-000000000001';
+  const reviewId = '91000000-0000-4000-8000-000000000002';
+  const proposalId = '91000000-0000-4000-8000-000000000003';
+  const generationKey = 'coach-e2e-routine-adoption';
+  const profile: CoachingProfileV1 = {
+    schemaVersion: 1, id: profileId, revision: 1, effectiveAt: timestamp, updatedAt: timestamp,
+    goals: [{ id: '91000000-0000-4000-8000-000000000004', status: 'active', priority: 1, focus: { type: 'general_strength' }, motivation: null, targetDate: null }],
+    constraints: { availableDaysPerWeek: 3, sessionMinutes: 45, equipment: ['barbell'], considerations: null },
+    preferences: { preferredExerciseIds: [], avoidedExerciseIds: [] },
+    consent: { coachingEnabled: true, shareWorkoutHistory: true, includeCheckIns: false, consentedAt: timestamp, revokedAt: null },
+    weeklyReview: { enabled: false, dayOfWeek: 1, timezone: 'America/New_York', notificationEnabled: false },
+  };
+  const review = {
+    storageVersion: 1, id: reviewId, revision: 1, profileId, profileRevision: 1, contextVersion: 1, generationKey, publishedAt: timestamp,
+    review: {
+      contractVersion: 1, generationKey, kind: 'continuity_check_in', authoredBy: 'WorkoutPal E2E', generatedAt: timestamp,
+      periodStart: '2026-11-17', periodEnd: '2026-11-23', latestWorkoutId: null, headline: 'A full-body routine is ready.', journeyHighlight: null,
+      observations: [{ category: 'uncertainty', text: 'This fixture validates routine adoption without relying on cloud data.', evidenceWorkoutIds: [] }],
+      confidence: 'medium', limitations: ['E2E fixture only.'], nextStep: { title: 'Try the recommended routine', rationale: 'Validate the complete local-first adoption flow.' },
+      contextUsed: [{ source: 'workoutpal', label: 'WorkoutPal E2E data', status: 'used', startDate: '2026-11-17', endDate: '2026-11-23' }],
+    },
+  };
+  const proposal = {
+    storageVersion: 1, id: proposalId, reviewId, generationKey, publishedAt: timestamp, sourceRoutine: null,
+    proposal: {
+      proposalVersion: 1, name: 'Coach Full Body', summary: 'A compact full-body session for reliable gym testing.',
+      exercises: [
+        { exerciseId: '00000000-0000-4000-8000-000000000001', setCount: 3, rationale: 'Use a stable compound press.' },
+        { exerciseId: '00000000-0000-4000-8000-000000000028', setCount: 3, rationale: 'Balance the press with a pull.' },
+      ],
+      removed: [], limitations: ['Adjust loads to your current readiness.'],
+    },
+  };
+  const profileValidation = validateCoachingProfile(profile);
+  const reviewValidation = validateStoredCoachReview(review);
+  const proposalValidation = validateStoredCoachRoutineProposal(proposal);
+  if (!profileValidation.ok || !reviewValidation.ok || !proposalValidation.ok) throw new Error('Invalid WorkoutPal E2E coaching fixture.');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT OR IGNORE INTO coaching_profiles (revision_id,profile_id,revision,owner_id,payload,effective_at,updated_at) VALUES (?,?,1,NULL,?,?,?)', `${profileId}:1`, profileId, JSON.stringify(profileValidation.value), timestamp, timestamp);
+    await db.runAsync('INSERT OR IGNORE INTO coach_reviews (id,owner_id,generation_key,payload,profile_id,profile_revision,context_version,period_start,period_end,latest_workout_id,published_at,archived_at) VALUES (?,NULL,?,?,?,1,1,?,?,NULL,?,NULL)', reviewId, generationKey, JSON.stringify(reviewValidation.value), profileId, '2026-11-17', '2026-11-23', timestamp);
+    await db.runAsync("INSERT OR IGNORE INTO coach_routine_proposals (id,owner_id,review_id,generation_key,payload,status,applied_routine_id,decided_at,published_at) VALUES (?,NULL,?,?,?,'pending',NULL,NULL,?)", proposalId, reviewId, generationKey, JSON.stringify(proposalValidation.value), timestamp);
+  });
 }
 
 export function initializeDatabase() {

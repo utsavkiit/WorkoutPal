@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, PrimaryButton, Screen } from '../../../src/components/ui';
-import { acceptCoachRoutineProposal, dismissCoachRoutineProposal, getCoachRoutineProposal, listExercises, listRoutines } from '../../../src/data/database';
+import { acceptCoachRoutineProposal, createWorkout, dismissCoachRoutineProposal, getActiveWorkout, getCoachRoutineProposal, listExercises, listRoutines } from '../../../src/data/database';
 import { CoachRoutineProposalItem, sourceRoutineStillMatches } from '../../../src/coaching/proposals';
 import { useApp } from '../../../src/context/AppContext';
 import { useTheme } from '../../../src/theme';
@@ -14,8 +14,9 @@ export default function RoutineProposalDetail() {
   useEffect(()=>{Promise.all([getCoachRoutineProposal(id),listExercises(),listRoutines()]).then(([proposal,exercises,routines])=>{setItem(proposal);setNames(Object.fromEntries(exercises.map((exercise)=>[exercise.id,exercise.name])));setStale(proposal?!sourceRoutineStillMatches(proposal.record.sourceRoutine,proposal.record.sourceRoutine?routines.find((routine)=>routine.id===proposal.record.sourceRoutine!.id)??null:routines[0]??null):false) }).catch(console.warn)},[id,revision]);
   if (!item) return <Screen style={styles.center}><Text style={{color:t.secondary}}>Recommendation not found.</Text></Screen>;
   const {record,status,appliedRoutineId}=item; const proposal=record.proposal; const source=record.sourceRoutine;
-  const accept=async()=>{setBusy(true);try{await acceptCoachRoutineProposal(record.id);refresh();if(session)void syncNow().catch(console.warn);router.replace('/routines')}catch(error){Alert.alert('Could not accept recommendation',error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
+  const accept=async()=>{setBusy(true);try{const routineId=await acceptCoachRoutineProposal(record.id);setItem((current)=>current?{...current,status:'accepted',appliedRoutineId:routineId,decidedAt:new Date().toISOString()}:current);refresh();if(session)void syncNow().catch(console.warn)}catch(error){Alert.alert('Could not accept recommendation',error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
   const decline=async()=>{setBusy(true);try{await dismissCoachRoutineProposal(record.id);refresh();if(session)void syncNow().catch(console.warn);router.back()}catch(error){Alert.alert('Could not decline recommendation',error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
+  const start=async(routineId:string)=>{setBusy(true);try{const active=await getActiveWorkout();if(active){Alert.alert('Workout already in progress',`${active.name} is still active. Finish it before starting ${proposal.name}.`,[{text:'Not now',style:'cancel'},{text:'Resume workout',onPress:()=>router.push('/workout')}]);return}await createWorkout(routineId);refresh();router.push('/workout')}catch(error){Alert.alert('Could not start workout',error instanceof Error?error.message:String(error))}finally{setBusy(false)}};
   return <Screen><ScrollView contentContainerStyle={styles.content}>
     <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={()=>router.back()} style={styles.back}><Ionicons name="chevron-back" size={28} color={t.text}/></Pressable><Text style={[styles.title,{color:t.text}]}>Recommended routine</Text><View style={styles.back}/></View>
     <Text style={[styles.eyebrow,{color:t.accentDark}]}>{status==='pending'?'READY FOR YOUR DECISION':status==='accepted'?'ACCEPTED':'DECLINED'}</Text>
@@ -26,7 +27,7 @@ export default function RoutineProposalDetail() {
     {!!proposal.limitations.length&&<Card><Text style={[styles.section,{color:t.text}]}>What to keep in mind</Text>{proposal.limitations.map((value)=><Text key={value} style={[styles.line,{color:t.secondary}]}>• {value}</Text>)}</Card>}
     {status==='pending'&&stale&&<Card style={{borderColor:t.danger}}><Text style={[styles.section,{color:t.danger}]}>Routine changed</Text><Text style={[styles.body,{color:t.text}]}>This recommendation was based on an earlier routine. Request an updated review before accepting it.</Text></Card>}
     <Text style={[styles.small,{color:t.secondary}]}>Accept adds a separate saved routine for future workouts. Your current routine and any workout in progress stay unchanged.</Text>
-    {status==='pending'?<View style={styles.actions}><PrimaryButton title={busy?'Saving…':'Accept and add routine'} disabled={busy||stale} onPress={accept}/><PrimaryButton title="Decline" kind="secondary" disabled={busy} onPress={decline}/></View>:status==='accepted'&&appliedRoutineId?<PrimaryButton title="View saved routines" kind="secondary" onPress={()=>router.replace('/routines')}/>:null}
+    {status==='pending'?<View style={styles.actions}><PrimaryButton title={busy?'Saving…':'Accept and add routine'} disabled={busy||stale} onPress={accept}/><PrimaryButton title="Decline" kind="secondary" disabled={busy} onPress={decline}/></View>:status==='accepted'&&appliedRoutineId?<View style={styles.actions}><PrimaryButton title={busy?'Starting…':'Start recommended workout'} disabled={busy} onPress={()=>start(appliedRoutineId)}/><PrimaryButton title="View saved routines" kind="secondary" disabled={busy} onPress={()=>router.replace('/routines')}/></View>:null}
   </ScrollView></Screen>;
 }
 

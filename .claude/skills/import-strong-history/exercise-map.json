@@ -11,6 +11,8 @@
     "Deadlift (Barbell)": "Deadlift",
     "Face Pull (Cable)": "Face Pull",
     "Goblet Squat (Kettlebell)": "Kettlebell Goblet Squat",
+    "Hack Squat": "Hack Squat",
+    "Hanging Leg Raise": "Hanging Leg Raise",
     "Incline Bench Press (Dumbbell)": "Incline Dumbbell Press",
     "Lat Pulldown (Cable)": "Lat Pulldown",
     "Lateral Raise (Dumbbell)": "Lateral Raise",
@@ -19,20 +21,28 @@
     "Overhead Press (Dumbbell)": "Dumbbell Shoulder Press",
     "Pec Deck (Machine)": "Chest Fly",
     "Plank": "Plank",
+    "Pull Up": "Pull-Up",
+    "Reverse Fly (Machine)": "Rear Delt Fly",
     "Romanian Deadlift (Barbell)": "Romanian Deadlift",
     "Seated Calf Raise (Machine)": "Calf Raise",
     "Seated Leg Curl (Machine)": "Leg Curl",
     "Seated Leg Press (Machine)": "Leg Press",
     "Seated Row (Cable)": "Seated Cable Row",
     "Squat (Barbell)": "Back Squat",
+    "Standing Calf Raise (Machine)": "Calf Raise",
     "Triceps Pushdown (Cable - Straight Bar)": "Triceps Pushdown"
   },
   "custom": {
     "Bench Press - Close Grip (Dumbell)": { "name": "Close-Grip Bench Press (Dumbbell)", "muscleGroup": "Triceps", "equipment": "Dumbbell", "type": "weighted" },
     "Bent Over One Arm Row (Dumbbell)": { "name": "Bent Over One Arm Row (Dumbbell)", "muscleGroup": "Back", "equipment": "Dumbbell", "type": "weighted" },
+    "Chest Press (Machine)": { "name": "Chest Press (Machine)", "muscleGroup": "Chest", "equipment": "Machine", "type": "weighted" },
     "Hanging Knee Raise": { "name": "Hanging Knee Raise", "muscleGroup": "Core", "equipment": "Bodyweight", "type": "bodyweight" },
     "Incline Curl (Dumbbell)": { "name": "Incline Curl (Dumbbell)", "muscleGroup": "Biceps", "equipment": "Dumbbell", "type": "weighted" },
     "Romanian Deadlift (Dumbbell)": { "name": "Romanian Deadlift (Dumbbell)", "muscleGroup": "Hamstrings", "equipment": "Dumbbell", "type": "weighted" },
-    "Squat (Smith Machine)": { "name": "Squat (Smith Machine)", "muscleGroup": "Quadriceps", "equipment": "Machine", "type": "weighted" }
+    "Shoulder Press (Machine)": { "name": "Shoulder Press (Machine)", "muscleGroup": "Shoulders", "equipment": "Machine", "type": "weighted" },
+    "Skullcrusher (Dumbbell)": { "name": "Skull Crusher (Dumbbell)", "muscleGroup": "Triceps", "equipment": "Dumbbell", "type": "weighted" },
+    "Squat (Dumbbell)": { "name": "Squat (Dumbbell)", "muscleGroup": "Quadriceps", "equipment": "Dumbbell", "type": "weighted" },
+    "Squat (Smith Machine)": { "name": "Squat (Smith Machine)", "muscleGroup": "Quadriceps", "equipment": "Machine", "type": "weighted" },
+    "Woodchopper": { "name": "Woodchopper", "muscleGroup": "Core", "equipment": "Cable", "type": "weighted" }
   }
 }

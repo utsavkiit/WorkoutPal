@@ -20,7 +20,22 @@ npm test
 npx expo export --platform ios
 ```
 
-The expected unit-test count is four. After dependency changes, also run `npx expo-doctor` and address all actionable SDK compatibility findings.
+The expected unit-test count is 55. After dependency changes, also run `npx expo-doctor` and address all actionable SDK compatibility findings.
+
+## Feature and PR verification checklist
+
+Before any feature PR is merged, follow the repository merge gate in `AGENTS.md` and capture the results in the Kanban Handoff:
+
+```bash
+npm run typecheck
+npm test
+npx expo export --platform ios
+npm run e2e:build:ios
+npm run e2e:ios
+git diff --check
+```
+
+The full Detox suite is the merge gate even when a targeted test passed during development. New or repaired UI behavior needs an automated journey covering the success path and the relevant recovery/error path. Device-specific changes also require the matching signed Release/iPhone check; Supabase changes require migration/RLS/ownership and sync evidence. A skipped or unavailable requirement must remain explicitly unverified, and the PR must not be merged as complete.
 
 ## Build and run on the development iPhone
 
@@ -67,6 +82,26 @@ xcrun devicectl device process launch \
 ```
 
 The iPhone must be unlocked, paired, in Developer Mode, and trusted. A cable is useful for initial installation; Metro can run over the same Wi-Fi afterward.
+
+## Build a standalone gym-ready app
+
+The Debug development build requires Metro. For an app that works away from the Mac, build Release so the JavaScript bundle is embedded:
+
+```bash
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 xcodebuild \
+  -workspace ios/WorkoutPal.xcworkspace \
+  -scheme WorkoutPal \
+  -configuration Release \
+  -destination 'id=<XCODE_DEVICE_UDID>' \
+  -derivedDataPath /private/tmp/WorkoutPalReleaseData \
+  -allowProvisioningUpdates build
+
+xcrun devicectl device install app \
+  --device <CORE_DEVICE_ID> \
+  /private/tmp/WorkoutPalReleaseData/Build/Products/Release-iphoneos/WorkoutPal.app
+```
+
+Installing over the same bundle ID upgrades the app and preserves its container; do not uninstall when workout data must be retained. If Xcode reports a missing versioned Homebrew Node path, set the ignored `ios/.xcode.env.local` to `export NODE_BINARY=/opt/homebrew/bin/node`. The phone must be unlocked before launching from `devicectl`.
 
 ## Supabase
 

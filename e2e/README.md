@@ -47,8 +47,10 @@ preferences. Restart steps inside a test retain that data.
 
 The build script disables Expo dotenv loading and blanks the two public cloud
 configuration variables. Tests therefore run in local-only mode, without using
-personal accounts or writing cloud records. Do not substitute your regular
-development binary for the E2E binary.
+personal accounts or writing cloud records. The script also enables deterministic
+local Coach fixtures so recommendation adoption can be exercised without a live
+account; normal development and Release builds do not include those records. Do
+not substitute your regular development binary for the E2E binary.
 
 ## Coverage
 
@@ -57,6 +59,10 @@ development binary for the E2E binary.
 - Recover a completed set in an active workout after termination; finish it,
   cancel an unsaved history edit, save corrected name/weight/reps, and verify
   those corrections after another restart.
+- Open a pending Coach recommendation, accept it into a distinct saved routine,
+  start the prescribed workout, verify active-workout recovery after restart by
+  tapping the full in-progress card, and discard the zero-set workout from the
+  always-visible Finish action.
 
 This suite does not establish authenticated sync correctness, network recovery,
 notification delivery, or physical-device accessibility. Those checks remain on
@@ -72,11 +78,9 @@ Keep explicit assertions around saved values and restart behavior. Prefer stable
 accessibility labels/test IDs; do not replace persistence checks with arbitrary
 sleep calls or globally disable synchronization to hide a failure.
 
-## Initial validation (September 11, 2026)
+## Latest validation (November 25, 2026)
 
-The Release simulator build, TypeScript check, seven unit tests, and iOS export
-passed. Detox driver setup succeeded after applying the UTF-8 locale. The first
-E2E run failed with `ENOSPC` during simulator startup; a retry stalled installing
-the app while the disk remained nearly full. The two UI tests are therefore
-**not yet verified**. Free disk space and run `npm run e2e:ios` against the existing
-binary, or rebuild first if the app has changed.
+The Release simulator build and all three UI journeys pass. Supporting validation
+also passes: TypeScript, 55 unit tests, and an iOS export. The Coach journey covers
+the local proposal decision, saved-routine creation, workout start, process
+termination, relaunch, active-workout recovery, and zero-set discard.

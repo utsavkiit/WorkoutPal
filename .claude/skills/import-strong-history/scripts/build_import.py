@@ -101,6 +101,11 @@ def main():
     with open(args.csv) as f:
         rows = list(csv.DictReader(f))
 
+    # Strong exports may interleave metadata rows such as "Rest Timer" with
+    # actual numbered sets. WorkoutPal stores completed sets only, so exclude
+    # those metadata rows before exercise validation and session grouping.
+    rows = [row for row in rows if (row.get("Set Order") or "").strip().isdigit()]
+
     # Verify every CSV exercise name is mapped before doing anything else.
     csv_names = sorted(set(r["Exercise Name"] for r in rows))
     unmapped = [n for n in csv_names if n not in seed_map and n not in custom_map]

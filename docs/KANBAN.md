@@ -1,6 +1,6 @@
 # WorkoutPal Kanban
 
-Updated: September 16, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone; on-device results are still pending from the user.
+Updated: November 25, 2026. Single-agent queue. The user has prioritized a gym-ready workout logger; AI Coach rollout is deferred. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested.
 
 ## Workflow
 
@@ -12,11 +12,11 @@ Updated: September 16, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: WP-032/AIC-019 user-requested routine recommendation MVP is implemented but in Verify on `feature/ai-coach`, together with a mitigation for Supabase's active PGRST303 future-JWT incident. QA-004 remains disk-space blocked.
-- Changes: Added narrow pending proposal publishing, contract/local/cloud storage, Coach comparison and Accept/Decline, atomic creation of a separate saved routine, and stale/owner guards. Sync pulls now retry only `PGRST303: JWT issued at future` with bounded backoff; exhausted pulls and durable outbox deferrals no longer raise the development error overlay. The linked migrations and legacy agent Function v4 are deployed. Detailed proposal state is in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md).
-- Validation: Typecheck, 55/55 tests, iOS export, migration parity, live rollback publisher/invalid-output/two-user RLS, diff check, and an HTTP 200 live Data API probe pass. Real agent publish, physical-iPhone future-JWT retry, and offline/restart/sync/accessibility adoption remain unverified. Advisors warn about the existing intentional deletion RPC and disabled leaked-password protection.
-- Exact next action: Reload the development app on the iPhone and trigger sync after a fresh/restored session; confirm future-JWT failures recover without LogBox. Then use the connected agent to publish one justified proposal and verify offline Accept/Decline, restart/sync, active-workout preservation, and accessibility; finish AIC-017 security/device review before rollout.
-- Prior context: AIC-006/AIC-011/AIC-016/AIC-017 and WP-009/WP-010/WP-031 remain in Verify; target-aware/edit proposal tasks AIC-013–AIC-015 remain after WP-013–015.
+- Current: OPS-001 is complete: all 15 missing Strong sessions are now in production Supabase. The AIC-019 Start gap, zero-set “stuck workout” trap, and undersized Resume target are fixed in the standalone Release now installed and launched on the connected iPhone without uninstalling existing data. The repository-wide feature/PR verification gate is now documented for future agents.
+- Changes: Imported only the missing Strong sessions and extended the reusable importer mapping for ten newly encountered exercise names; `Rest Timer` metadata rows are now ignored. For AIC-019/QA-001, added accessible routine Start controls, active-workout protection, stable post-adoption navigation, and an E2E-only Coach fixture. The entire “Workout in progress” card is now a labeled Resume button with a visible pill; Finish offers Keep or Discard when no set is complete. `AGENTS.md` and `docs/DEVELOPMENT_HANDOFF.md` now require typecheck, unit tests, export, full Detox, relevant physical-device/Supabase checks, diff review, and recorded evidence before merge.
+- Validation: Production now has exactly 140 workout sessions, 747 workout exercises, and 2,240 sets for the sole owner, with zero duplicate start timestamps. The imported range ends November 23, 2026; five new custom exercises exist and the health advisor is clear. For the app, fresh typecheck, 55/55 unit tests, iOS export, simulator Release build, `git diff --check`, and Detox 3/3 pass. The Coach test accepts, starts, restarts, taps the full Resume card, discards a zero-set routine, and confirms no active workout remains. The signed physical Release rebuild, signature verification, in-place install, and direct launch without Metro pass. Live authenticated phone sync and the user's physical tap-through are not yet proven.
+- Exact next action: On the installed iPhone, tap anywhere on “Workout in progress,” tap Finish, and choose Discard; then run the offline logging/restart/history journey and reconnect/sync check. Foreground the signed-in app and run sync so the 15 imported sessions download, then confirm the November 23 workout appears in History.
+- Prior context: WP-009/WP-010/WP-031 and AIC-006/AIC-011/AIC-016/AIC-017/AIC-019 remain in Verify. Target-aware/edit proposal tasks AIC-013–AIC-015 remain after WP-013–015.
 
 ## Ready
 
@@ -27,17 +27,15 @@ Updated: September 16, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## In progress
 
-- **WP-032 AI coaching:** Build the external-agent-driven weekly review and user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-019 is in Verify.
+- **QA-001:** Physical-iPhone offline logging, active-workout restart recovery, completed-history persistence, reconnect, and sync. Use a standalone Release build that launches without Metro.
 
 ## Verify
+
+- **WP-032 AI coaching:** Build the external-agent-driven weekly review and user-approved routine proposals. Follow the detailed queue and handoff in [AI_COACH_KANBAN.md](AI_COACH_KANBAN.md); AIC-019 adoption passes deterministic simulator E2E but still needs a real-agent physical-device sync check.
 
 - **WP-009 Edit history data:** Validate completed weight/reps, name, and date edits; persist offline, enqueue changes, and preserve corrections through remote merge. Implemented via `saveHistoryEdits`; typecheck/tests/export pass. Needs on-device check: edit while offline, restart app, confirm correction persists and later syncs/merges without reverting.
 - **WP-010 Edit history UI:** Clear save/cancel and input validation; after WP-009. Implemented in `app/history/[id].tsx`. Needs on-device check: VoiceOver/large-text pass on the new inputs, and that Cancel truly discards in-progress edits.
 - **WP-031 Delete history:** Delete a whole completed workout, a single exercise from a past workout, or a single completed set, with the deletion persisting through sync (not just locally). Guards against leaving a workout with zero exercises or an exercise with zero sets — delete the parent instead. Implemented (`deleteWorkout`/`deleteHistoryExercise`/`deleteHistorySet` in `src/data/database.ts`, remote delete handling in `src/data/sync.ts`, trash-icon UI in `app/history/[id].tsx`). `supabase/migrations/002_delete_completed_workouts.sql` is now applied to the linked project and `supabase/tests/rls.sql` passes (confirms an owner can delete their own completed workout and not another owner's). Needs on-device check: delete a set/exercise/workout while offline, confirm it stays deleted after restart and after the next sync (no resurrection via pull), and that the "only exercise"/"only set" guard alerts fire correctly.
-
-## Blocked
-
-- **QA-004 Detox E2E:** Configure local iOS Simulator builds and isolated, repeatable workout logging/history/restart tests; document commands and validate an actual run. Implementation and build are complete; actual Detox run is blocked until several GB of disk space are freed.
 
 ## Backlog
 
@@ -67,13 +65,13 @@ Ordered by feature priority; dependencies constrain eligibility.
 - **WP-028 Superset UI:** Grouping controls and alternating-set flow; preserve ordinary workouts; after WP-027.
 - **WP-029 Substitution:** Session-only replacement preserves position and logged performance, uses replacement history, and makes saved-routine changes explicit. Independently deliverable from supersets.
 - **WP-030 Group/substitution QA:** Offline, restart, repeat, and sync; after WP-028, WP-029.
-- **QA-001:** Physical-iPhone offline logging, reconnect, and sync.
 - **QA-002:** Active-workout recovery and timer across backgrounding/restart.
 - **QA-003:** Larger text, VoiceOver, touch targets, and keyboard in active workouts.
 
 ## Done
 
-None.
+- **OPS-001 Strong history import:** Added the 15 missing sessions to production; verified owner totals 140 sessions, 747 exercises, and 2,240 sets with zero duplicate start timestamps on November 25, 2026.
+- **QA-004 Detox E2E:** Release-simulator build and all isolated workout logging/history/restart plus Coach routine-adoption journeys pass on November 25, 2026. Evidence: `npm run e2e:build:ios` and `npm run e2e:ios` (3/3).
 
 ## Code entry points
 

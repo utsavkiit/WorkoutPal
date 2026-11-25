@@ -23,7 +23,7 @@ export function ExercisePicker({ visible, onClose, onSelect }: { visible: boolea
     </ScrollView> : <>
       <TextInput testID="exercise-search" accessibilityLabel="Search exercises" value={search} onChangeText={setSearch} placeholder="Search exercises" placeholderTextColor={t.secondary} style={[styles.search,{color:t.text,backgroundColor:t.input}]}/>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{MUSCLE_GROUPS.map(v=><Pressable key={v} onPress={()=>setMuscle(v)} style={[styles.pill,{backgroundColor:muscle===v?t.accent:t.elevated}]}><Text style={{color:muscle===v?'#07150C':t.text,fontWeight:'600'}}>{v}</Text></Pressable>)}</ScrollView>
-      <FlatList data={items} keyExtractor={i=>i.id} contentContainerStyle={{paddingBottom:24}} renderItem={({item})=><Pressable onPress={()=>onSelect(item)} style={[styles.item,{borderBottomColor:t.border}]}><View><Text style={[styles.itemName,{color:t.text}]}>{item.name}</Text><Text style={{color:t.secondary}}>{item.muscleGroup} · {item.equipment}</Text></View><Ionicons name="add-circle" size={27} color={t.accent}/></Pressable>}/>
+      <FlatList data={items} keyExtractor={i=>i.id} contentContainerStyle={{paddingBottom:24}} renderItem={({item})=><Pressable accessibilityRole="button" accessibilityLabel={`Add ${item.name}`} onPress={()=>onSelect(item)} style={[styles.item,{borderBottomColor:t.border}]}><View><Text style={[styles.itemName,{color:t.text}]}>{item.name}</Text><Text style={{color:t.secondary}}>{item.muscleGroup} · {item.equipment}</Text></View><Ionicons name="add-circle" size={27} color={t.accent}/></Pressable>}/>
     </>}
   </SafeAreaView></Modal>;
 }
