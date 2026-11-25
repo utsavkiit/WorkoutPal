@@ -1,6 +1,6 @@
 # WorkoutPal Kanban
 
-Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone this session; on-device results are still pending from the user.
+Updated: November 25, 2026. Single-agent queue. Baseline review was code-only, not device-tested; WP-009/WP-010/WP-031 are implemented but likewise not yet device-tested. A dev build with WP-009/WP-010 was installed and launched on the physical iPhone; on-device results are still pending from the user.
 
 ## Workflow
 
@@ -12,11 +12,11 @@ Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## Handoff
 
-- Current: None. WP-031's Supabase CLI blocker cleared this session (see below); [AI_COACHING_PRD.md](AI_COACHING_PRD.md) remains a draft only, no implementation authorized, WP-032 remains in Backlog for refinement.
-- Decisions: Versioned agent guide exposed through database briefing; WorkoutPal data is the baseline, with authorized session-available external context as optional enrichment. Reviews disclose sources/coverage; reusable external preferences require user confirmation. Existing Supabase MCP, offline UI, and user-approved routine proposals remain the direction. Access boundaries, scheduling, and external-source availability remain open. Operational note for future Supabase changes: `npx supabase migration list --linked` shows both 001 and 002 as unapplied remotely, but 001's schema is already live (it was applied out-of-band, not through tracked `db push`) — running `supabase db push` as-is would replay 001's `create table` statements and fail. Apply new SQL via `npx supabase db query --linked --file <path>` instead (same mechanism already used for `supabase/tests/rls.sql`), or repair the migration ledger first if switching to `db push`.
-- Validation: WP-031 — `npx supabase login` succeeded (the CLI had no stored token, and `projects list` without `--debug` hung rather than failing fast; `--debug` showed it actually was authenticated). Applied `supabase/migrations/002_delete_completed_workouts.sql` via `db query --file`, then fixed a bug in my own `supabase/tests/rls.sql` addition (it inserted rows for two different owners after the session had already switched to the `authenticated` role/JWT for one owner, which RLS correctly rejected; moved that fixture insert before `set local role authenticated`) and confirmed `db query --file supabase/tests/rls.sql` now prints PASS, including the completed-workout delete check. AI coaching draft: documentation and relative links reviewed, no runtime changes or tests needed.
-- Existing blockers: None. WP-009, WP-010, and WP-031 are all implemented and now sit in Verify awaiting the on-device checks listed there (WP-031's remote delete path is confirmed server-side via the RLS test, but not yet exercised from the app on the phone).
-- Exact next action: Reopen the AI coaching draft's "Decisions to revisit before implementation" with the user when returning to that thread; do not build it yet. Otherwise the next Ready task remains WP-001; inspect `src/data/database.ts` and `app/workout.tsx`.
+- Current: OPS-002 is implemented in the isolated `codex/software-factory` worktree. It adds standing end-to-end delivery authorization, a worktree assertion, reusable local gates, deterministic Release-simulator Detox coverage, a PR checklist, and hosted `Quality`/`iOS UI` jobs. PR delivery and protected-main enforcement are next.
+- Decisions: Feature requests authorize the routine worktree → implementation → validation → commit → push → PR → green-only auto-merge lifecycle without repeated prompts. Physical-iPhone, authenticated-Supabase, notification, background, and accessibility checks remain explicit blockers when applicable because hosted CI cannot prove them. Direct pushes, protection bypasses, and merging around skipped/stale checks are prohibited.
+- Validation: `npm run verify:worktree`, typecheck, 7/7 unit tests, iOS export, Detox setup, clean Release-simulator build, full Detox 2/2, and `git diff --check` pass. The first native build correctly failed with only 37 MB free; after removing 4 GB of explicit ignored Xcode build output, the clean rebuild passed. Device and Supabase checks are not applicable to this workflow-only change.
+- Blockers: Hosted PR checks and `main` branch protection have not yet been exercised; do not mark OPS-002 Done or merge until both required jobs pass and protection is configured.
+- Exact next action: Commit and push `codex/software-factory`, open the PR, verify the hosted `Quality` and `iOS UI` jobs, update OPS-002 to Done, merge, then enable/confirm protected-main required checks and automatic merge for future feature PRs.
 
 ## Ready
 
@@ -27,7 +27,7 @@ Updated: September 11, 2026. Single-agent queue. Baseline review was code-only, 
 
 ## In progress
 
-None.
+- **OPS-002 Software factory:** Require each feature to use an isolated linked worktree and complete regression coverage, local validation, commit, push, PR, required hosted checks, and green-only merge without separate prompts. Enforce the merge gate with GitHub Actions and protected `main`; retain physical-iPhone and authenticated-Supabase checks as explicit blockers when applicable.
 
 ## Verify
 

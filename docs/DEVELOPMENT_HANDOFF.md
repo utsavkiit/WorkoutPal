@@ -22,6 +22,38 @@ npx expo export --platform ios
 
 The expected unit-test count is four. After dependency changes, also run `npx expo-doctor` and address all actionable SDK compatibility findings.
 
+## Automatic feature delivery
+
+Feature requests use the standing end-to-end authorization in `AGENTS.md`. The assigned agent must create a linked `codex/*` worktree from the latest `origin/main`, deliver the feature on that branch, and continue through commit, push, PR creation, required checks, and merge without waiting for separate prompts for those routine steps.
+
+Start every feature with:
+
+```bash
+git fetch origin
+git worktree add -b codex/<feature-name> <worktree-path> origin/main
+cd <worktree-path>
+npm run verify:worktree
+```
+
+The local merge gate is:
+
+```bash
+npm run typecheck
+npm test
+npx expo export --platform ios
+npm run e2e:build:ios
+npm run e2e:ios
+git diff --check
+```
+
+The complete Detox suite is required even when a targeted test passed during iteration. Add a stable automated journey for the feature's success path and important failure/recovery path. See `e2e/README.md` for current coverage.
+
+After local validation, commit and push the `codex/*` branch, open a PR to `main`, and enable squash auto-merge. GitHub's protected `main` branch requires the hosted `Quality` and `iOS UI` jobs, so code cannot merge while typecheck, unit tests, export, or full Detox validation is red. Do not bypass protection.
+
+Hosted CI cannot prove behavior that requires the connected iPhone, a personal authenticated session, notifications, backgrounding, or production Supabase. Run and record those checks locally whenever applicable. If one still needs the user or external access, leave the PR open and the task in Verify/Blocked rather than merging.
+
+After a successful merge, confirm the merge is on `origin/main`, then remove only the clean merged worktree and branch. Never remove a worktree containing uncommitted work.
+
 ## Build and run on the development iPhone
 
 List available devices instead of assuming the saved identifier is still valid:
