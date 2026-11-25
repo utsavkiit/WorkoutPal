@@ -1,0 +1,67 @@
+name: Feature delivery gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: feature-delivery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx expo export --platform ios
+      - name: Check PR diff whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
+
+  ios-ui:
+    name: iOS UI
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install simulator test dependencies
+        run: |
+          brew tap wix/brew
+          brew install wix/brew/applesimutils
+          pod install --project-directory=ios
+          npm run e2e:setup:ios
+      - run: npm run e2e:build:ios
+      - run: npm run e2e:ios
+      - name: Upload Detox failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-artifacts
+          path: artifacts/detox
+          if-no-files-found: ignore
