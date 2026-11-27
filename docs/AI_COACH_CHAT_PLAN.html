@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkoutPal — AI Coach Chat with Memory: Implementation Plan</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d2430; --muted: #5b6574; --line: #d9dee6; --panel: #f6f8fb;
+    --accent: #1f6feb; --accent-soft: #e7f0ff; --ok: #1a7f37; --warn: #9a6700; --warn-soft: #fff6dc;
+    --phone: #e9f5ec; --edge: #eaf1ff; --db: #fdf1e6; --llm: #f3ecff; --obs: #fff0f3; --dev: #eef2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --fg: #e3e8ef; --muted: #9aa5b4; --line: #2b3440; --panel: #161d26;
+      --accent: #5ea2ff; --accent-soft: #15253d; --ok: #4ac26b; --warn: #e3b341; --warn-soft: #2d2510;
+      --phone: #13261a; --edge: #142033; --db: #2a1d12; --llm: #221a33; --obs: #2e1820; --dev: #1b232c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 22px; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  p, li { max-width: 86ch; }
+  code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  pre code { border: 0; padding: 0; background: none; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; border: 1px solid var(--line); padding: 7px 10px; }
+  th { background: var(--panel); }
+  .meta { color: var(--muted); margin: 0 0 18px; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .toc { columns: 2; column-gap: 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 18px 12px 34px; }
+  .toc li { break-inside: avoid; }
+  figure { margin: 16px 0 24px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--bg); }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { fill: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  svg .muted { fill: var(--muted); }
+  svg .title { font-weight: 700; font-size: 14px; }
+  svg .small { font-size: 11.5px; }
+  svg .lbl { font-size: 11.5px; font-weight: 600; }
+  svg .box { stroke: var(--line); stroke-width: 1.2; }
+  svg .inner { fill: var(--bg); stroke: var(--line); stroke-width: 1; }
+  svg .phone { fill: var(--phone); } svg .edge { fill: var(--edge); } svg .db { fill: var(--db); }
+  svg .llm { fill: var(--llm); } svg .obs { fill: var(--obs); } svg .dev { fill: var(--dev); }
+  svg .arrow { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+  svg .arrow.alt { stroke: var(--ok); }
+  svg .arrow.dash { stroke-dasharray: 6 5; stroke: var(--muted); }
+  svg .headA { fill: var(--accent); } svg .headB { fill: var(--ok); } svg .headC { fill: var(--muted); }
+  svg .pill { fill: var(--accent); } svg .pilltext { fill: #fff; font-size: 11px; font-weight: 700; }
+  .tasks td:first-child { white-space: nowrap; font-weight: 700; }
+  .tag { display: inline-block; font-size: 12px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>AI Coach chat with memory: implementation plan</h1>
+<p class="meta">WorkoutPal · Branch <code>feature/coach-chat</code> (based on <code>feature/ai-coach</code>) · Status: <strong>approved plan, not yet implemented</strong> · Written November 27, 2026</p>
+
+<div class="callout">
+  <strong>For agents picking this up:</strong> follow <code>AGENTS.md</code> and the Kanban workflow. Work the tasks in <a href="#tasks">Implementation tasks</a> in order, starting with the <strong>CC-001 spike</strong>; its results decide two fallbacks. Keep the invariants in <a href="#invariants">Non-negotiable invariants</a>. Record progress and the exact next action in the Kanban Handoff.
+</div>
+
+<ol class="toc">
+  <li><a href="#context">Context and decisions</a></li>
+  <li><a href="#architecture">Architecture diagram</a></li>
+  <li><a href="#invariants">Non-negotiable invariants</a></li>
+  <li><a href="#memory">Memory layers and lifecycle</a></li>
+  <li><a href="#spike">CC-001 spike</a></li>
+  <li><a href="#models">App-side models</a></li>
+  <li><a href="#persistence">Persistence, sync and Supabase</a></li>
+  <li><a href="#core">Shared chat core and tools</a></li>
+  <li><a href="#functions">Edge Functions</a></li>
+  <li><a href="#writes">When memories are written</a></li>
+  <li><a href="#observability">Tracing, replay and evals</a></li>
+  <li><a href="#ui">UI</a></li>
+  <li><a href="#reviews">Weekly review integration</a></li>
+  <li><a href="#proactive">Proactive coaching hooks</a></li>
+  <li><a href="#tasks">Implementation tasks</a></li>
+  <li><a href="#verification">Verification</a></li>
+</ol>
+
+<h2 id="context">1. Context and decisions</h2>
+<p>Users chat with an AI coach in WorkoutPal. Over time the coach learns lasting facts about the user: goals, preferences, injuries, schedule, equipment and other relevant details. Those facts persist as memories, along with episodic summaries of past conversations. They inform every later chat and the existing weekly Coach reviews.</p>
+<p>This reverses "in-app chat: out of scope" in <code>docs/AI_COACHING_PRD.md</code>. The chat builds on <code>feature/ai-coach</code>, which already provides:</p>
+<ul>
+  <li>the coaching profile, including goals, constraints and consent</li>
+  <li><code>getCoachingContext()</code> and weekly metrics</li>
+  <li>the Coach tab</li>
+  <li>the <code>coaching-agent</code> Edge Function pattern</li>
+</ul>
+<table>
+  <tr><th>Decision</th><th>Choice</th></tr>
+  <tr><td>Interaction</td><td>A conversational coach. It replies, asks follow-up questions, answers questions, and saves memories while replying.</td></tr>
+  <tr><td>Model calls</td><td>The <strong>Vercel AI SDK</strong> (<code>ai</code>, <code>@ai-sdk/anthropic</code>, <code>@ai-sdk/openai</code>). It isn't tied to one provider; the provider and model are chosen by secrets.</td></tr>
+  <tr><td>Where the AI is called</td><td>Supabase Edge Functions, so the API keys stay on the server. The functions use the <strong>caller's JWT</strong>, so no service-role key is needed.</td></tr>
+  <tr><td>Memory writes</td><td>The AI saves memories automatically through tools. The <strong>app</strong> applies the resulting memory ops to SQLite and the outbox. The user can review, edit, undo and delete them.</td></tr>
+  <tr><td>Workout context</td><td>A compact summary of the last 4 weeks, plus a <code>get_exercise_history</code> lookup tool that reads synced data through RLS.</td></tr>
+  <tr><td>Memory model</td><td>Three layers: short-term (session messages), long-term facts (<code>coach_memories</code>) and episodic (<code>coach_session_summaries</code> with open threads).</td></tr>
+  <tr><td>Upkeep</td><td>No daily job. The end-of-session pass tidies the whole memory set. Time-bound facts use <code>reviewAfter</code> and <code>followUpAfter</code> dates, so the coach checks in instead of deleting.</td></tr>
+  <tr><td>Observability</td><td><strong>Langfuse Cloud</strong> (free Hobby tier) holds traces, sessions, feedback scores, datasets and experiments. Every turn is logged, always on in v1.</td></tr>
+  <tr><td>Sessions</td><td>A new session starts after 30 minutes idle or when the user taps <strong>New chat</strong>.</td></tr>
+  <tr><td>Proactive coaching</td><td>Not in v1. The hooks are built now (see <a href="#proactive">§14</a>).</td></tr>
+  <tr><td>Lost in-flight reply</td><td>Accepted for v1. If the app is killed mid-request, that turn is lost. The trace still exists.</td></tr>
+</table>
+
+<h2 id="architecture">2. Architecture</h2>
+<figure>
+<svg viewBox="0 0 1100 640" role="img" aria-labelledby="archTitle archDesc">
+  <title id="archTitle">AI Coach chat architecture</title>
+  <desc id="archDesc">The iPhone app sends chat requests to Supabase Edge Functions. These call the LLM provider through the Vercel AI SDK, read consent and workout history from Postgres under row-level security, and send traces to Langfuse. The app applies the returned memory ops locally and syncs them to Postgres through the outbox.</desc>
+  <defs>
+    <marker id="mA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headA"/></marker>
+    <marker id="mB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headB"/></marker>
+    <marker id="mC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headC"/></marker>
+  </defs>
+
+  <!-- iPhone -->
+  <rect x="20" y="20" width="310" height="600" rx="16" class="box phone"/>
+  <text x="40" y="46" class="title">iPhone app (local-first)</text>
+  <rect x="38" y="62" width="274" height="96" rx="8" class="inner"/>
+  <text x="50" y="82" class="lbl">Coach tab: Chat | Reviews</text>
+  <text x="50" y="100" class="small muted">CoachChat: bubbles, memory chip + Undo,</text>
+  <text x="50" y="115" class="small muted">feedback, New chat, "learned N" banner</text>
+  <text x="50" y="132" class="small muted">Memories: facts + Past conversations</text>
+  <text x="50" y="148" class="small muted">Reviews: existing weekly review UI</text>
+
+  <rect x="38" y="172" width="274" height="112" rx="8" class="inner"/>
+  <text x="50" y="192" class="lbl">src/coaching (pure TS, tested)</text>
+  <text x="50" y="210" class="small muted">chat.ts: sessions, buildChatRequest</text>
+  <text x="50" y="226" class="small muted">memory.ts: ops reducer, validate, invert,</text>
+  <text x="50" y="241" class="small muted">  selectMemoriesForPrompt (priority cap)</text>
+  <text x="50" y="257" class="small muted">episodes.ts: summaries, dueThreads</text>
+  <text x="50" y="273" class="small muted">context.ts: getCoachingContext +memories</text>
+
+  <rect x="38" y="298" width="274" height="150" rx="8" class="inner"/>
+  <text x="50" y="318" class="lbl">SQLite (source of truth)</text>
+  <text x="50" y="337" class="small">coach_memories <tspan class="muted">synced</tspan></text>
+  <text x="50" y="354" class="small">coach_session_summaries <tspan class="muted">synced</tspan></text>
+  <text x="50" y="371" class="small">coach_chat_messages <tspan class="muted">local only</tspan></text>
+  <text x="50" y="388" class="small">coach_chat_sessions <tspan class="muted">local only</tspan></text>
+  <text x="50" y="405" class="small">coaching_profiles, workouts … <tspan class="muted">existing</tspan></text>
+  <text x="50" y="430" class="small muted">applyCoachMemoryOps: 1 txn + enqueue</text>
+
+  <rect x="38" y="462" width="274" height="60" rx="8" class="inner"/>
+  <text x="50" y="482" class="lbl">Outbox → sync.ts</text>
+  <text x="50" y="500" class="small muted">push upserts/deletes; pull + mergeRemoteData</text>
+  <text x="50" y="515" class="small muted">(last-write-wins on updated_at)</text>
+
+  <text x="40" y="550" class="small muted">Offline: chat history and memories readable;</text>
+  <text x="40" y="566" class="small muted">composer disabled; end-of-session pass retries</text>
+  <text x="40" y="582" class="small muted">when back online.</text>
+
+  <!-- Edge functions -->
+  <rect x="410" y="20" width="370" height="370" rx="16" class="box edge"/>
+  <text x="430" y="46" class="title">Supabase Edge Functions (Deno)</text>
+  <rect x="428" y="60" width="108" height="46" rx="8" class="inner"/>
+  <text x="438" y="80" class="lbl">coach-chat</text>
+  <text x="438" y="96" class="small muted">per message</text>
+  <rect x="542" y="60" width="118" height="46" rx="8" class="inner"/>
+  <text x="550" y="80" class="lbl">…-consolidate</text>
+  <text x="550" y="96" class="small muted">end of session</text>
+  <rect x="666" y="60" width="98" height="46" rx="8" class="inner"/>
+  <text x="674" y="80" class="lbl">…-feedback</text>
+  <text x="674" y="96" class="small muted">rating → score</text>
+
+  <rect x="428" y="118" width="336" height="258" rx="8" class="inner"/>
+  <text x="440" y="138" class="lbl">_shared/coach-chat (shared core, Node-importable)</text>
+  <text x="440" y="158" class="small">runTurn(TurnInput) · consolidateSession()</text>
+  <text x="440" y="175" class="small muted">TurnInput = user_message | event (future proactive)</text>
+  <text x="440" y="193" class="small">buildCoachContext(source: client | server)</text>
+  <text x="440" y="211" class="small">model.ts → AI SDK generateText (step limit ≈4)</text>
+  <text x="440" y="229" class="small">prompts/chat-v1.ts · consolidate-v1.ts</text>
+  <text x="440" y="251" class="lbl">Tools (zod schemas)</text>
+  <text x="440" y="269" class="small muted">save_memory · update_memory · forget_memory</text>
+  <text x="440" y="285" class="small muted">search_memories (only if memories omitted)</text>
+  <text x="440" y="301" class="small muted">get_exercise_history (RLS query, consent-gated)</text>
+  <text x="440" y="317" class="small muted">search_past_conversations · resolve_thread</text>
+  <text x="440" y="333" class="small muted">write_session_summary (consolidation only)</text>
+  <text x="440" y="355" class="small muted">Memory/thread tools only record ops → returned</text>
+  <text x="440" y="369" class="small muted">to the app; the function never writes memories.</text>
+
+  <!-- Postgres -->
+  <rect x="410" y="430" width="370" height="190" rx="16" class="box db"/>
+  <text x="430" y="456" class="title">Supabase Postgres (RLS: owner_id = auth.uid())</text>
+  <text x="430" y="480" class="small">coach_memories <tspan class="muted">new</tspan></text>
+  <text x="430" y="498" class="small">coach_session_summaries <tspan class="muted">new</tspan></text>
+  <text x="430" y="516" class="small">coaching_profiles <tspan class="muted">consent check</tspan></text>
+  <text x="430" y="534" class="small">workout_sessions / workout_exercises / workout_sets</text>
+  <text x="430" y="552" class="small muted">  ← get_exercise_history (completed sets only)</text>
+  <text x="430" y="578" class="small muted">No trace tables: traces live in Langfuse.</text>
+  <text x="430" y="596" class="small muted">Tests: supabase/tests/rls.sql cross-user isolation.</text>
+
+  <!-- LLM -->
+  <rect x="850" y="20" width="230" height="140" rx="16" class="box llm"/>
+  <text x="868" y="46" class="title">LLM provider</text>
+  <text x="868" y="70" class="small">Anthropic or OpenAI</text>
+  <text x="868" y="88" class="small muted">via @ai-sdk/* packages</text>
+  <text x="868" y="110" class="small muted">LLM_PROVIDER, LLM_MODEL,</text>
+  <text x="868" y="126" class="small muted">LLM_CONSOLIDATE_MODEL,</text>
+  <text x="868" y="142" class="small muted">*_API_KEY (secrets)</text>
+
+  <!-- Langfuse -->
+  <rect x="850" y="200" width="230" height="250" rx="16" class="box obs"/>
+  <text x="868" y="226" class="title">Langfuse Cloud</text>
+  <text x="868" y="250" class="small">Traces per turn</text>
+  <text x="868" y="266" class="small muted">sessionId, userId, trigger,</text>
+  <text x="868" y="282" class="small muted">promptVersion, model, tokens,</text>
+  <text x="868" y="298" class="small muted">cost, tool spans, memoryCount</text>
+  <text x="868" y="322" class="small">Scores: user_feedback, judge</text>
+  <text x="868" y="346" class="small">Dataset: coach-chat</text>
+  <text x="868" y="370" class="small">Experiments (eval runs)</text>
+  <text x="868" y="396" class="small muted">Hobby tier; retention to be</text>
+  <text x="868" y="412" class="small muted">confirmed in CC-001</text>
+
+  <!-- Dev scripts -->
+  <rect x="850" y="490" width="230" height="130" rx="16" class="box dev"/>
+  <text x="868" y="516" class="title">Developer scripts (Node)</text>
+  <text x="868" y="540" class="small">npm run coach:replay</text>
+  <text x="868" y="558" class="small">npm run coach:eval</text>
+  <text x="868" y="576" class="small">npm run coach:eval:sync</text>
+  <text x="868" y="600" class="small muted">import the shared core via tsx</text>
+
+  <!-- Arrows -->
+  <!-- 1 request -->
+  <path d="M312 92 L 428 80" class="arrow" marker-end="url(#mA)"/>
+  <rect x="330" y="60" width="18" height="18" rx="9" class="pill"/><text x="335" y="73" class="pilltext">1</text>
+  <!-- 2 response -->
+  <path d="M428 100 L 312 128" class="arrow alt" marker-end="url(#mB)"/>
+  <rect x="354" y="118" width="18" height="18" rx="9" class="pill"/><text x="359" y="131" class="pilltext">2</text>
+  <!-- 3 LLM -->
+  <path d="M764 205 C 810 205, 810 100, 850 100" class="arrow" marker-end="url(#mA)" marker-start="url(#mA)"/>
+  <rect x="800" y="140" width="18" height="18" rx="9" class="pill"/><text x="805" y="153" class="pilltext">3</text>
+  <!-- 4 RLS reads -->
+  <path d="M600 376 L 600 430" class="arrow" marker-end="url(#mA)"/>
+  <rect x="608" y="394" width="18" height="18" rx="9" class="pill"/><text x="613" y="407" class="pilltext">4</text>
+  <!-- 5 traces -->
+  <path d="M764 300 L 850 300" class="arrow" marker-end="url(#mA)"/>
+  <rect x="798" y="276" width="18" height="18" rx="9" class="pill"/><text x="803" y="289" class="pilltext">5</text>
+  <!-- 6 sync -->
+  <path d="M312 492 L 410 515" class="arrow alt" marker-end="url(#mB)" marker-start="url(#mB)"/>
+  <rect x="352" y="478" width="18" height="18" rx="9" class="pill"/><text x="357" y="491" class="pilltext">6</text>
+  <!-- 7 dev scripts -->
+  <path d="M965 490 L 965 450" class="arrow dash" marker-end="url(#mC)"/>
+  <rect x="972" y="462" width="18" height="18" rx="9" class="pill"/><text x="977" y="475" class="pilltext">7</text>
+</svg>
+<figcaption>
+  <strong>1</strong> The app calls <code>supabase.functions.invoke('coach-chat')</code> with the user's JWT. The body holds <code>sessionId</code>, the last 20 session messages, the compact context, the selected memories with ids, recent episode summaries and open threads.
+  <strong>2</strong> The function returns <code>{reply, memoryOps, threadOps, traceId}</code>. The app saves the reply and applies the ops in one SQLite transaction plus outbox.
+  <strong>3</strong> <code>generateText</code> calls the model, with tool calls handled through the AI SDK.
+  <strong>4</strong> The user-scoped client reads consent from <code>coaching_profiles</code> and runs the <code>get_exercise_history</code> queries. RLS limits both to the caller's rows.
+  <strong>5</strong> Each turn, consolidation and feedback score is sent to Langfuse, which is flushed before the response returns.
+  <strong>6</strong> The outbox syncs <code>coach_memories</code> and <code>coach_session_summaries</code>: push, then pull and merge with last-write-wins.
+  <strong>7</strong> The replay and eval scripts read traces and datasets from Langfuse and re-run the same shared core.
+</figcaption>
+</figure>
+
+<h2 id="invariants">3. Non-negotiable invariants</h2>
+<ul>
+  <li><strong>Local-first:</strong> UI writes never wait for Supabase. Memories and summaries are written to SQLite first, then the outbox. Chat needs a network connection; nothing else in this feature does.</li>
+  <li><strong>Single write path:</strong> the Edge Functions never write memories or summaries. They return ops, and the app applies them through <code>applyCoachMemoryOps</code> and its episode equivalent.</li>
+  <li><strong>No service-role key</strong> in the chat functions. Use a client scoped to the user's <code>Authorization</code> header, so RLS enforces ownership.</li>
+  <li><strong>Consent:</strong> the functions require <code>consent.coachingEnabled</code>. Workout data and <code>get_exercise_history</code> are only included when <code>consent.shareWorkoutHistory</code> is true. <code>deleteCoachingData()</code> also wipes memories, summaries, chat messages and sessions.</li>
+  <li><strong>Untrusted text:</strong> memories, summaries, routine names and messages are data, not instructions. Prompts must say so, and the prompt-injection evals enforce it.</li>
+  <li><strong>No medical advice:</strong> the coach doesn't diagnose and suggests a professional for injuries. This matches the PRD's out-of-scope list.</li>
+  <li><strong>Never expire silently:</strong> stale facts trigger a check-in. Every automated change is visible and can be undone.</li>
+  <li>Serialize SQLite access: no overlapping transactions. Use client-generated UUIDs and keep RLS enabled.</li>
+</ul>
+
+<h2 id="memory">4. Memory layers and lifecycle</h2>
+<table>
+  <tr><th>Layer</th><th>Storage</th><th>What the model receives</th></tr>
+  <tr><td>Short-term</td><td>Current session's messages in <code>coach_chat_messages</code> (local only)</td><td>The last 20 messages, about 24k characters</td></tr>
+  <tr><td>Long-term facts</td><td><code>coach_memories</code> (synced)</td><td>All active memories up to a priority cap (≈150 items or 12k characters). When some are omitted, the model also gets the <code>search_memories</code> tool.</td></tr>
+  <tr><td>Episodic</td><td><code>coach_session_summaries</code> (synced), plus workouts and weekly reviews</td><td>The last 3 summaries, open threads under 30 days old, and the <code>search_past_conversations</code> and <code>get_exercise_history</code> tools</td></tr>
+</table>
+<figure>
+<svg viewBox="0 0 1100 360" role="img" aria-labelledby="memTitle memDesc">
+  <title id="memTitle">Memory lifecycle</title>
+  <desc id="memDesc">Session messages are short-term memory. During each reply the model writes long-term facts through tools. When the session ends, a consolidation pass writes an episodic summary with open threads and tidies long-term memory. Review and follow-up dates produce check-ins, and are the trigger sources for future proactive coaching.</desc>
+  <defs>
+    <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headA"/></marker>
+    <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headC"/></marker>
+  </defs>
+  <rect x="20" y="30" width="230" height="130" rx="12" class="box phone"/>
+  <text x="36" y="56" class="title">Short-term</text>
+  <text x="36" y="80" class="small">Session messages</text>
+  <text x="36" y="98" class="small muted">30 min idle or New chat</text>
+  <text x="36" y="114" class="small muted">ends the session</text>
+  <text x="36" y="140" class="small muted">phone only</text>
+
+  <rect x="400" y="20" width="300" height="110" rx="12" class="box edge"/>
+  <text x="416" y="46" class="title">In-turn (every reply)</text>
+  <text x="416" y="70" class="small">save / update / forget_memory</text>
+  <text x="416" y="88" class="small">resolve_thread</text>
+  <text x="416" y="110" class="small muted">ops applied by app → chip + Undo</text>
+
+  <rect x="400" y="170" width="300" height="130" rx="12" class="box edge"/>
+  <text x="416" y="196" class="title">End-of-session pass</text>
+  <text x="416" y="220" class="small">write_session_summary + openThreads</text>
+  <text x="416" y="238" class="small">catch missed facts; merge duplicates;</text>
+  <text x="416" y="256" class="small">resolve contradictions (newest wins)</text>
+  <text x="416" y="280" class="small muted">cheaper model · idempotent · 3 retries</text>
+
+  <rect x="850" y="20" width="230" height="110" rx="12" class="box db"/>
+  <text x="866" y="46" class="title">Long-term facts</text>
+  <text x="866" y="70" class="small">coach_memories</text>
+  <text x="866" y="88" class="small muted">category · text ≤280</text>
+  <text x="866" y="106" class="small muted">reviewAfter (time-bound)</text>
+
+  <rect x="850" y="170" width="230" height="130" rx="12" class="box db"/>
+  <text x="866" y="196" class="title">Episodic</text>
+  <text x="866" y="220" class="small">coach_session_summaries</text>
+  <text x="866" y="238" class="small muted">summary ≤600 · topics</text>
+  <text x="866" y="256" class="small muted">openThreads + followUpAfter</text>
+  <text x="866" y="280" class="small muted">+ workouts, weekly reviews</text>
+
+  <path d="M250 80 L 400 75" class="arrow" marker-end="url(#m2)"/>
+  <path d="M250 120 C 320 140, 330 230, 400 235" class="arrow" marker-end="url(#m2)"/>
+  <path d="M700 75 L 850 75" class="arrow" marker-end="url(#m2)"/>
+  <path d="M700 215 C 780 215, 780 100, 850 100" class="arrow" marker-end="url(#m2)"/>
+  <path d="M700 245 L 850 245" class="arrow" marker-end="url(#m2)"/>
+  <text x="716" y="66" class="small muted">facts</text>
+  <text x="716" y="238" class="small muted">summary</text>
+  <text x="742" y="150" class="small muted">upkeep</text>
+
+  <path d="M965 300 L 965 330 L 135 330 L 135 160" class="arrow dash" marker-end="url(#m3)"/>
+  <text x="250" y="322" class="small muted">due reviewAfter / followUpAfter → check-in marker in prompt (v1) → future proactive triggers (event TurnInput)</text>
+</svg>
+<figcaption>Memories are written during replies and tidied when the session ends. Due dates lead to check-ins and never to silent deletion. The dashed path is also how proactive coaching will be triggered later.</figcaption>
+</figure>
+
+<h2 id="spike">5. CC-001 spike (do first, about half a day)</h2>
+<p>In a throwaway function under <code>supabase functions serve</code>, verify:</p>
+<ol>
+  <li><code>import { generateText, tool } from 'npm:ai'</code>, together with <code>npm:@ai-sdk/anthropic</code> and <code>npm:@ai-sdk/openai</code>, runs in the Supabase Deno edge runtime. One tool-using call should complete with a step limit (<code>stopWhen</code>, or <code>maxSteps</code> on older versions). <strong>Fallback:</strong> small hand-written <code>fetch</code> adapters behind the same <code>runTurn</code> interface.</li>
+  <li>Langfuse tracing works. Try the AI SDK's <code>experimental_telemetry</code> with <code>@langfuse/otel</code> first. <strong>Fallback:</strong> if OpenTelemetry won't load in Deno, create traces and generations by hand with the Langfuse JS SDK. Always flush before returning the response.</li>
+  <li>Check the Langfuse Hobby plan's <strong>retention and monthly unit limit</strong> at langfuse.com/pricing. Published figures conflict: 30 days with 50k units, or 90 days with 100k units. The user prefers 90-day retention. If Hobby only gives 30 days, accept it for now and keep eval-worthy traces as dataset items.</li>
+</ol>
+<p>Record the outcomes and the chosen paths in the Kanban Handoff before starting CC-002.</p>
+
+<h2 id="models">6. App-side models (pure TypeScript, unit-tested)</h2>
+<h3><code>src/coaching/memory.ts</code></h3>
+<pre><code>type MemoryCategory = 'goal'|'preference'|'injury'|'constraint'|'schedule'|'equipment'|'personal'|'other';
+interface CoachMemoryV1 {
+  id: string; category: MemoryCategory; text: string /* ≤280 */;
+  status: 'active'|'archived'; source: 'chat'|'user'; sourceTraceId: string|null;
+  reviewAfter: string|null /* YYYY-MM-DD, time-bound facts */; createdAt: string; updatedAt: string;
+}
+type MemoryOp =
+  | { type: 'save'; category: MemoryCategory; text: string; reviewAfter?: string|null }
+  | { type: 'update'; id: string; text?: string; category?: MemoryCategory; reviewAfter?: string|null }
+  | { type: 'forget'; id: string };</code></pre>
+<ul>
+  <li><code>validateMemoryOps(ops, existingIds)</code> rejects unknown ids, text over 280 characters, and more than 5 ops per turn. The end-of-session pass may do up to 15.</li>
+  <li><code>applyMemoryOps(memories, ops, now, makeId)</code> is a pure reducer. A save whose normalized text matches an existing memory becomes an update.</li>
+  <li><code>invertMemoryOp</code> returns the op that undoes a change. <code>isDueForReview(memory, today)</code> checks whether a time-bound memory is due for a check-in.</li>
+  <li><code>selectMemoriesForPrompt(memories, budget)</code> returns <code>{included, omitted, omittedCount}</code>. Over budget, <code>injury</code>, <code>goal</code> and <code>constraint</code> memories are always included, then the rest by most recently updated.</li>
+</ul>
+<h3><code>src/coaching/episodes.ts</code></h3>
+<pre><code>interface CoachSessionSummaryV1 {
+  id: string /* = sessionId */; startedAt: string; endedAt: string;
+  summary: string /* ≤600 */; topics: string[] /* ≤5 */;
+  openThreads: { id: string; text: string /* ≤200 */; followUpAfter: string|null; resolvedAt: string|null }[] /* ≤5 */;
+  updatedAt: string;
+}
+type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };</code></pre>
+<ul><li>Validation, <code>selectEpisodesForPrompt</code> (last 3 plus open threads under 30 days old, and a compact index of up to 50 for search), and <code>dueThreads(today)</code>.</li></ul>
+<h3><code>src/coaching/chat.ts</code></h3>
+<pre><code>interface ChatMessageV1 {
+  id: string; sessionId: string; role: 'user'|'assistant';
+  origin: 'user'|'coach'; trigger: string|null;          // proactive hooks
+  text: string; createdAt: string; traceId: string|null; memoryOpIds: string[];
+}</code></pre>
+<ul>
+  <li><code>currentSessionId(lastMessage, now)</code> starts a new session after 30 minutes idle. <strong>New chat</strong> forces a new session.</li>
+  <li><code>buildChatRequest(...)</code> trims to the last 20 session messages (about 24k characters) and builds a compact summary from <code>CoachingContextV1</code>, with workout data omitted unless <code>shareWorkoutHistory</code> is true. It adds the selected memories and episodes.</li>
+  <li><code>validateChatResponse</code> checks the shape returned by the Edge Functions.</li>
+</ul>
+
+<h2 id="persistence">7. Persistence, sync and Supabase</h2>
+<ul>
+  <li><strong>SQLite</strong> (<code>src/data/database.ts</code>, following the branch's coach-table conventions):
+    <ul>
+      <li>Tables: <code>coach_memories</code> and <code>coach_session_summaries</code> (synced), <code>coach_chat_messages</code> and <code>coach_chat_sessions(id, started_at, last_message_at, consolidated_at, consolidation_attempts, consolidation_error)</code> (local only).</li>
+      <li>Functions: <code>listCoachMemories</code>, <code>saveCoachMemory</code>, <code>deleteCoachMemory</code>, <code>applyCoachMemoryOps(ops, traceId)</code> (one transaction plus <code>enqueueWithDatabase</code>), <code>listSessionSummaries</code>, <code>saveSessionSummary</code>, <code>applyThreadOps</code>, <code>listChatMessages</code>, <code>appendChatMessage</code>, <code>clearChatHistory</code>.</li>
+      <li>Also extend <code>attachLocalOwner</code> and <code>deleteCoachingData()</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Sync</strong> (<code>src/data/sync.ts</code>): push branches for <code>coach_memory</code> and <code>coach_session_summary</code> upserts and deletes. On pull, add both to <code>Promise.all</code> and to the <code>mergeRemoteData</code> bundle, merging with last-write-wins on <code>updated_at</code>.</li>
+  <li><strong>Migration</strong> <code>supabase/migrations/2026112xxxxxxx_coach_chat_memory.sql</code>:
+    <ul>
+      <li>Creates both tables with <code>owner_id</code> and jsonb payload checks, and enables RLS.</li>
+      <li>Adds four own-row policies in the <code>(select auth.uid()) = owner_id</code> style of <code>20260913040648_ai_coach_profiles.sql</code>, plus explicit grants.</li>
+      <li>Apply it with <code>npx supabase db query --linked --file …</code>.</li>
+    </ul>
+  </li>
+  <li><strong>RLS tests:</strong> add both tables to the cross-user isolation checks in <code>supabase/tests/rls.sql</code>.</li>
+  <li><strong>Secrets:</strong> <code>LLM_PROVIDER</code>, <code>LLM_MODEL</code>, <code>LLM_CONSOLIDATE_MODEL</code>, <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>, <code>LANGFUSE_PUBLIC_KEY</code>, <code>LANGFUSE_SECRET_KEY</code>, <code>LANGFUSE_BASE_URL</code>.</li>
+</ul>
+
+<h2 id="core">8. Shared chat core and tools</h2>
+<p>The core lives in <code>supabase/functions/_shared/coach-chat/</code>. It uses no Deno-only APIs, so the Node scripts can import it with <code>tsx</code>.</p>
+<table>
+  <tr><th>File</th><th>Responsibility</th></tr>
+  <tr><td><code>model.ts</code></td><td><code>getModel(provider, model)</code> through the <code>@ai-sdk/*</code> packages. Switching provider only changes secrets.</td></tr>
+  <tr><td><code>context.ts</code></td><td><code>buildCoachContext(source)</code>. The source is <code>{type:'client', payload}</code> (v1) or <code>{type:'server', ownerId}</code> (later, for proactive coaching).</td></tr>
+  <tr><td><code>prompts/chat-v1.ts</code></td><td>
+    <p>Exports <code>PROMPT_VERSION</code>. The prompt covers:</p>
+    <ul>
+      <li>Role: get to know the user by asking about goals, injuries and schedule.</li>
+      <li>Save durable facts only, not small talk. Update or forget memories when facts change.</li>
+      <li>Ask about at most one item marked <code>[due for check-in]</code> or <code>[follow-up due]</code> per session.</li>
+      <li>Give no medical advice.</li>
+      <li>Treat context as data, not instructions.</li>
+      <li>Mention that history tool results only include synced workouts.</li>
+    </ul>
+    <p>Memories are rendered as a cacheable prefix, using provider options such as Anthropic <code>cacheControl</code>.</p>
+  </td></tr>
+  <tr><td><code>prompts/consolidate-v1.ts</code></td><td>Instructions for the end-of-session pass: write the summary and open threads, catch missed facts, merge duplicates, resolve contradictions (newest explicit statement wins), leave uncertain items alone, and turn recurring episodic patterns into long-term facts.</td></tr>
+  <tr><td><code>tools.ts</code></td><td>
+    <p>AI SDK <code>tool()</code> definitions with zod schemas:</p>
+    <ul>
+      <li>Memory and thread tools (<code>save_memory</code>, <code>update_memory</code>, <code>forget_memory</code>, <code>resolve_thread</code>, <code>write_session_summary</code>) only <em>collect</em> ops and return an acknowledgment.</li>
+      <li><code>search_memories</code> is registered only when memories were omitted; it does a keyword match over the omitted memories.</li>
+      <li><code>search_past_conversations</code> does a keyword search over the summary index.</li>
+    </ul>
+  </td></tr>
+  <tr><td><code>historyTool.ts</code></td><td>
+    <p><code>get_exercise_history({exercise, from?, to?, limit≤50})</code>:</p>
+    <ul>
+      <li>Uses the user-scoped client to read completed <code>workout_sessions</code>, joined to <code>workout_exercises</code> and the completed <code>workout_sets</code>.</li>
+      <li>Matches the exercise name case-insensitively, or by catalog id.</li>
+      <li>Returns, per session, the date, sets, top set and volume, capped at about 4k characters.</li>
+      <li>Is registered only when consent allows it.</li>
+      <li>Its results note that only synced workouts are included.</li>
+    </ul>
+  </td></tr>
+  <tr><td><code>runTurn.ts</code></td><td>
+    <p><code>runTurn({input: TurnInput, context, model, promptVersion, telemetry}) → {reply, memoryOps, threadOps, usage}</code></p>
+    <ul>
+      <li><code>TurnInput = {kind:'user_message', text} | {kind:'event', event:{type, payload}}</code>. v1 only sends <code>user_message</code>.</li>
+      <li>Calls <code>generateText</code> with a step limit of about 4 and <code>maxOutputTokens</code>.</li>
+      <li>The trace carries <code>sessionId</code>, <code>userId</code>, <code>trigger</code>, <code>promptVersion</code>, <code>appVersion</code> and model.</li>
+      <li>Trace metadata carries <code>memoryCount</code>, <code>dueForReviewCount</code> and <code>nearDuplicatePairs</code>.</li>
+    </ul>
+  </td></tr>
+  <tr><td><code>consolidateSession.ts</code></td><td>The same structure as <code>runTurn</code>, with the consolidation prompt and the cheaper model. Returns <code>{memoryOps, summary, threadOps, usage}</code>.</td></tr>
+</table>
+
+<h2 id="functions">9. Edge Functions</h2>
+<p>All three are registered in <code>supabase/config.toml</code> with <code>verify_jwt = true</code>.</p>
+<table>
+  <tr><th>Function</th><th>Behavior</th></tr>
+  <tr><td><code>coach-chat</code></td><td>
+    <ol>
+      <li>Accepts POST only, with a body of at most 64 KB.</li>
+      <li>Creates a user-scoped client and requires <code>coachingEnabled</code>, otherwise returns 403.</li>
+      <li>Validates and caps the input, then runs <code>runTurn</code>.</li>
+      <li>Flushes Langfuse and returns <code>{reply, memoryOps, threadOps, traceId}</code>.</li>
+    </ol>
+    <p>Errors are traced and returned as <code>{error}</code> with a 4xx or 5xx status.</p>
+  </td></tr>
+  <tr><td><code>coach-chat-consolidate</code></td><td>Takes <code>{sessionId, messages, memories, episodesIndex}</code> and runs <code>consolidateSession</code>. Traced under the same <code>sessionId</code> with the tag <code>consolidation</code>. Returns <code>{memoryOps, summary, threadOps, traceId}</code>.</td></tr>
+  <tr><td><code>coach-chat-feedback</code></td><td>Takes <code>{traceId, value: 1|-1, comment?}</code>. It checks that the trace's <code>userId</code> matches the caller, then records the Langfuse score <code>user_feedback</code>.</td></tr>
+</table>
+
+<h2 id="writes">10. When memories are written</h2>
+<ol>
+  <li><strong>During each reply.</strong> The ops come back with the reply. The app saves both in one SQLite transaction plus outbox, the chip and Undo appear immediately, and Supabase receives the ops on the next sync.</li>
+  <li><strong>At the end of a session</strong> (30 minutes idle or New chat). The app checks idempotently when the Coach tab opens, when the app returns to the foreground, and before a new session starts.
+    <ul>
+      <li>Sessions with fewer than 2 user messages are skipped.</li>
+      <li>The app applies the ops and summary, sets <code>consolidated_at</code>, and shows the banner "Coach learned / tidied N things · Review".</li>
+      <li>Offline or failed attempts are retried on the next trigger. After 3 attempts the session is marked failed and not retried.</li>
+    </ul>
+  </li>
+  <li><strong>Manual edits</strong> in the Memories screen are written locally right away and sync the same way.</li>
+  <li><strong>Weekly reviews</strong> read the active memories when the review is requested.</li>
+  <li><strong>Accepted gap:</strong> a reply lost in flight (app killed or network dropped) is not recovered. The trace remains, and the end-of-session pass may pick up the fact later.</li>
+</ol>
+
+<h2 id="observability">11. Tracing, replay and evals</h2>
+<h3>Tracing (Langfuse)</h3>
+<ul>
+  <li>Every chat turn, consolidation and feedback score is traced. Traces are tagged with <code>sessionId</code>, <code>userId</code> (the Supabase user id), <code>trigger</code>, <code>promptVersion</code>, model, tokens, cost and a span for each tool call. The app stores <code>traceId</code> on messages and on memories (<code>sourceTraceId</code>).</li>
+  <li><strong>Privacy:</strong> chat text, including injury details, goes to Langfuse Cloud and to the LLM provider. State this in the PRD. Logging is always on in v1; revisit before anyone other than the owner uses the app.</li>
+</ul>
+<h3>Replay: <code>scripts/coach-chat/replay.ts</code></h3>
+<ul>
+  <li><code>npm run coach:replay -- &lt;traceId&gt; [--prompt chat-v2] [--model …] [--provider …]</code> fetches the trace input from Langfuse (keys in a local, uncommitted <code>.env</code>), re-runs the shared core, and prints a diff of reply, ops, tokens and cost.</li>
+  <li><code>--session &lt;sessionId&gt;</code> replays a whole conversation. <em>Pinned</em> mode uses each turn's recorded input; <em>rolling</em> mode feeds each new reply into the next turn.</li>
+  <li>The same command works on consolidation traces.</li>
+</ul>
+<h3>Evals</h3>
+<ul>
+  <li><strong>Seed cases:</strong> about 30 cases in <code>evals/coach-chat/cases/*.json</code>, with Git as the source of truth. <code>npm run coach:eval:sync</code> uploads them to the Langfuse dataset <code>coach-chat</code>.</li>
+  <li><strong>New cases from production:</strong> thumbs-down traces go into the dataset after personal details are removed.</li>
+  <li><strong>Categories:</strong>
+    <ul>
+      <li>memory capture</li>
+      <li>no over-saving</li>
+      <li>update vs duplicate</li>
+      <li>forget or correction</li>
+      <li>multi-turn consistency</li>
+      <li>grounding in workout numbers</li>
+      <li>history-tool use and restraint</li>
+      <li>injury safety</li>
+      <li>prompt injection</li>
+      <li>consent off</li>
+      <li>eliciting goals from a new user</li>
+      <li>check-ins and follow-ups without nagging</li>
+      <li>consolidation: missed facts, merging, contradictions, small-talk-only sessions</li>
+      <li>episodic: summary accuracy, open threads, no mixing across sessions, promoting patterns</li>
+    </ul>
+  </li>
+  <li><strong>Graders</strong> (<code>evals/coach-chat/graders.ts</code>):
+    <ul>
+      <li>Deterministic: op types, categories and ids, op limits, banned phrases, number grounding, tool calls and arguments.</li>
+      <li>LLM-as-judge: Langfuse evaluator scoring 1–5 on helpfulness, tone, follow-up quality and memory text quality.</li>
+    </ul>
+  </li>
+  <li><strong>Runner:</strong> <code>npm run coach:eval -- --prompt chat-v1 --model … [--repeat 3]</code> runs a Langfuse dataset experiment and attaches the deterministic scores.</li>
+  <li><strong>Gate for any prompt, model or tool change:</strong> 100% on the hard checks for safety and consent, and no regression against the baseline. Record the run name in the Handoff.</li>
+  <li><strong>Free tests:</strong> <code>npm test</code> runs the cases through the AI SDK's <code>MockLanguageModel</code> (<code>ai/test</code>) with recorded responses and a stubbed history tool. This checks parsing and op handling deterministically, at no cost.</li>
+</ul>
+
+<h2 id="ui">12. UI</h2>
+<p>Chat goes inside the existing Coach tab, because the tab bar already has 5 tabs.</p>
+<ul>
+  <li><strong><code>app/(tabs)/coach.tsx</code></strong>: a segmented control, <strong>Chat | Reviews</strong>, defaulting to Chat. The current content moves unchanged to <code>src/components/CoachReviews.tsx</code>. Chat reuses the "Set your goals" and "Coach is off" cards.</li>
+  <li><strong><code>src/components/CoachChat.tsx</code></strong>:
+    <ul>
+      <li>Message bubbles, a session divider and a <strong>New chat</strong> button.</li>
+      <li>A <code>KeyboardAvoidingView</code> composer with a large send button, and a typing indicator.</li>
+      <li>A memory chip under a reply ("Saved: … · Undo"), and 👍/👎 on assistant messages.</li>
+      <li>The "Coach learned N things · Review" banner.</li>
+      <li>Retry on a failed send. Offline, the composer is disabled with an explanation and history stays readable.</li>
+    </ul>
+  </li>
+  <li><strong><code>app/coach/memories.tsx</code></strong> ("What Coach knows"), which works fully offline:
+    <ul>
+      <li>Memories grouped by category, with edit, delete, add and <code>reviewAfter</code> editing.</li>
+      <li>A <strong>Past conversations</strong> section listing summaries and their threads. Summaries can be deleted and threads resolved.</li>
+      <li>A "Clear chat history" action.</li>
+    </ul>
+  </li>
+  <li>Use <code>useTheme</code> with <code>StyleSheet.create</code>, and the <code>Card</code>, <code>PrimaryButton</code> and <code>EmptyState</code> components from <code>src/components/ui.tsx</code>. Add <code>testID</code>s for Detox, use large touch targets, and support VoiceOver labels.</li>
+</ul>
+
+<h2 id="reviews">13. Weekly review integration</h2>
+<ul>
+  <li>Add an optional <code>memories</code> field (active only, capped at 50) to <code>CoachingContextV1</code> in <code>src/coaching/context.ts</code>. Consider adding a <code>recentEpisodes</code> field too. <code>getCoachingContext()</code> fills them in.</li>
+  <li>Check that the <code>coaching-agent</code> validators and contract accept the new fields. If they don't, bump the context version following the branch's conventions.</li>
+</ul>
+
+<h2 id="proactive">14. Proactive coaching hooks (built in v1, but no proactive behavior)</h2>
+<ul>
+  <li><strong><code>TurnInput</code></strong> accepts <code>event</code>. Prompts have a slot for describing the event, and traces carry <code>trigger</code>.</li>
+  <li><strong><code>ChatMessageV1</code></strong> has <code>origin</code> and <code>trigger</code> fields.</li>
+  <li><strong><code>buildCoachContext</code></strong> can take a <code>client</code> or a <code>server</code> source; only <code>client</code> is implemented in v1.</li>
+  <li><strong>Due dates:</strong> <code>reviewAfter</code> and <code>followUpAfter</code>, with helpers shared between the prompt now and future nudges.</li>
+  <li><strong>Episodic summaries are synced,</strong> so a server-side trigger can read them later.</li>
+  <li><strong>Later phases (not built):</strong>
+    <ol>
+      <li>Phone-side triggers: a post-workout debrief, a nudge when the app opens, local notifications for due follow-ups.</li>
+      <li>A server-side cron, push notifications and a synced coach inbox. Memory changes still flow only through the user's replies.</li>
+      <li>Opt-in per nudge type, quiet hours, frequency caps, and a "should I speak?" step with its own evals.</li>
+    </ol>
+  </li>
+</ul>
+
+<h2 id="tasks">15. Implementation tasks</h2>
+<p>Add these to <code>docs/KANBAN.md</code> or <code>docs/AI_COACH_KANBAN.md</code> when work starts. Each row is acceptance criteria; dependencies are written "after …".</p>
+<table class="tasks">
+  <tr><th>ID</th><th>Task</th><th>Acceptance criteria</th></tr>
+  <tr><td>CC-001</td><td>Spike</td><td>The AI SDK tool call and Langfuse trace work in the Supabase edge runtime, or a fallback is chosen. The Langfuse Hobby limits are confirmed. Results are in the Handoff.</td></tr>
+  <tr><td>CC-002</td><td>Memory model</td><td><code>memory.ts</code> with validation, reducer, invert, due-for-review and priority selection, plus <code>memory.test.ts</code>.</td></tr>
+  <tr><td>CC-003</td><td>Episode model</td><td><code>episodes.ts</code> with validation, selection, due threads and thread ops, plus tests.</td></tr>
+  <tr><td>CC-004</td><td>Chat model</td><td><code>chat.ts</code> with sessions, request builder (consent gating, trimming) and response validation, plus tests. After CC-002 and CC-003.</td></tr>
+  <tr><td>CC-005</td><td>Local persistence</td><td>The four SQLite tables and functions. <code>deleteCoachingData</code> and <code>attachLocalOwner</code> extended. After CC-002 to CC-004.</td></tr>
+  <tr><td>CC-006</td><td>Supabase schema</td><td>Migration for the two synced tables with RLS and grants. <code>rls.sql</code> extended and passing on the linked project.</td></tr>
+  <tr><td>CC-007</td><td>Sync</td><td>Push, pull and merge for memories and summaries. They survive an offline edit, a restart, and a sync without being reverted. After CC-005 and CC-006.</td></tr>
+  <tr><td>CC-008</td><td>Shared core</td><td>Model, context source, prompts, tools, history tool, <code>runTurn</code> and <code>consolidateSession</code>, with mock-model tests passing in <code>npm test</code>. After CC-001.</td></tr>
+  <tr><td>CC-009</td><td>Edge Functions</td><td>The three functions with Langfuse tracing and flush. Consent 403, input caps and feedback ownership check are verified locally with curl. After CC-008.</td></tr>
+  <tr><td>CC-010</td><td>Chat UI</td><td>Coach segmented control, CoachChat (chips, Undo, feedback, offline state, retry). After CC-005 and CC-009.</td></tr>
+  <tr><td>CC-011</td><td>End-of-session pass</td><td>Idempotent trigger, retries, the banner, and the summary saved and synced. After CC-007 and CC-009.</td></tr>
+  <tr><td>CC-012</td><td>Memories screen</td><td>Facts and Past conversations: view, edit, delete, add, resolve thread, clear history. Works offline. After CC-005.</td></tr>
+  <tr><td>CC-013</td><td>Weekly review context</td><td>Memories (and episodes, if added) appear in <code>getCoachingContext</code>, and the <code>coaching-agent</code> contract is validated. After CC-005.</td></tr>
+  <tr><td>CC-014</td><td>Replay</td><td><code>coach:replay</code> works for a single trace, a whole session (pinned and rolling) and a consolidation trace. After CC-009.</td></tr>
+  <tr><td>CC-015</td><td>Evals</td><td>Seed cases, graders, dataset sync and the experiment runner. Baseline run recorded. After CC-008.</td></tr>
+  <tr><td>CC-016</td><td>E2E and device QA</td><td>Detox chat flow with the function stubbed. Physical-iPhone checks from §16 pass. After CC-010 to CC-012.</td></tr>
+  <tr><td>CC-017</td><td>Docs</td><td>PRD chat, memory and privacy section. <code>DEVELOPMENT_HANDOFF.md</code> covers secrets and the replay and eval commands.</td></tr>
+</table>
+
+<h2 id="verification">16. Verification</h2>
+<ul>
+  <li><strong>Standard checks:</strong> <code>npm run typecheck</code>, <code>npm test</code> (including the memory, episode and chat tests and the mock-model cases), and <code>npx expo export --platform ios</code>, per <code>AGENTS.md</code>.</li>
+  <li><strong><code>supabase functions serve</code> plus curl with a real user JWT:</strong>
+    <ul>
+      <li>Consent off returns 403.</li>
+      <li>"I hurt my left knee last month" produces a save op with category <code>injury</code>.</li>
+      <li>"What did I bench in October?" triggers <code>get_exercise_history</code> and matches the synced data.</li>
+      <li>A second user's JWT cannot see the first user's history.</li>
+      <li>With 200 seeded memories, the request stays within budget, injuries are included, and <code>search_memories</code> finds an omitted memory.</li>
+      <li>The trace appears in Langfuse with session, user, tokens and cost.</li>
+      <li>A 👎 appears as a score on that trace.</li>
+    </ul>
+  </li>
+  <li><strong>Replay:</strong> one trace with a different prompt version, and a whole session.</li>
+  <li><strong>Consolidation:</strong>
+    <ul>
+      <li>Mention a fact in passing over 3 turns, then tap New chat. The consolidation trace appears, the banner shows, and a summary with threads is synced.</li>
+      <li>Reopening the app does not rerun the pass for that session.</li>
+      <li>If the session ends while offline, the pass runs after reconnecting.</li>
+    </ul>
+  </li>
+  <li><strong>Episodic:</strong>
+    <ul>
+      <li>Agree to "try pause squats for 2 weeks", set its follow-up date to today, and start a new session. The coach asks about it once. Answering resolves the thread.</li>
+      <li>"What did we talk about last month?" uses <code>search_past_conversations</code>.</li>
+    </ul>
+  </li>
+  <li><strong>Evals:</strong> run <code>npm run coach:eval</code> and save the result as the baseline experiment.</li>
+  <li><strong>Database:</strong> apply the migration and run <code>supabase/tests/rls.sql</code>.</li>
+  <li><strong>Detox:</strong> Coach → Chat (with the stub fixture) → send a message → memory chip → Memories → delete.</li>
+  <li><strong>Physical iPhone:</strong>
+    <ul>
+      <li>A multi-turn chat. Memories and summaries sync, as seen in the Supabase tables.</li>
+      <li>Offline, memories stay viewable and the composer is disabled.</li>
+      <li>A weekly review includes the memories in its context.</li>
+    </ul>
+  </li>
+</ul>
+
+<p class="meta">Sources consulted for tool choices: <a href="https://ai-sdk.dev">AI SDK</a> · <a href="https://langfuse.com/integrations/frameworks/vercel-ai-sdk">Langfuse with the Vercel AI SDK</a> · <a href="https://langfuse.com/pricing">Langfuse pricing</a> · <a href="https://docs.sentry.io/platforms/javascript/guides/deno/agent-tracing/vercelai/">Sentry's note on OpenTelemetry under Deno</a>.</p>
+</main>
+</body>
+</html>

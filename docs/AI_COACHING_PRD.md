@@ -222,7 +222,7 @@ The first releasable slice includes:
 - offline access to previously synced reviews and proposals; and
 - clear author, source, date-range, confidence, and missing-data labels.
 
-Out of scope: in-app chat, autonomous routine replacement, daily coaching summaries, multi-agent coordination, nutrition/body-composition coaching, medical or rehabilitation advice, raw health-data ingestion, and provider selection UI.
+Out of scope: ~~in-app chat~~ (superseded on November 27, 2026: in-app chat with user-editable memory is planned in [AI_COACH_CHAT_PLAN.html](AI_COACH_CHAT_PLAN.html), which sends chat text to the configured LLM provider and Langfuse), autonomous routine replacement, daily coaching summaries, multi-agent coordination, nutrition/body-composition coaching, medical or rehabilitation advice, raw health-data ingestion, and provider selection UI.
 
 ## Success measures
 
