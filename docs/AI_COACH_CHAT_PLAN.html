@@ -52,6 +52,9 @@
   svg .arrow.dash { stroke-dasharray: 6 5; stroke: var(--muted); }
   svg .headA { fill: var(--accent); } svg .headB { fill: var(--ok); } svg .headC { fill: var(--muted); }
   svg .pill { fill: var(--accent); } svg .pilltext { fill: #fff; font-size: 11px; font-weight: 700; }
+  svg .lifeline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 5; }
+  svg .arrow.dashret { stroke-dasharray: 5 4; }
+  svg .halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
   .tasks td:first-child { white-space: nowrap; font-weight: 700; }
   .tag { display: inline-block; font-size: 12px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
 </style>
@@ -68,7 +71,7 @@
 
 <ol class="toc">
   <li><a href="#context">Context and decisions</a></li>
-  <li><a href="#architecture">Architecture diagram</a></li>
+  <li><a href="#architecture">Architecture</a> and <a href="#flow">end-to-end flow</a></li>
   <li><a href="#invariants">Non-negotiable invariants</a></li>
   <li><a href="#memory">Memory layers and lifecycle</a></li>
   <li><a href="#spike">CC-001 spike</a></li>
@@ -257,6 +260,141 @@
   <strong>5</strong> Each turn, consolidation and feedback score is sent to Langfuse, which is flushed before the response returns.
   <strong>6</strong> The outbox syncs <code>coach_memories</code> and <code>coach_session_summaries</code>: push, then pull and merge with last-write-wins.
   <strong>7</strong> The replay and eval scripts read traces and datasets from Langfuse and re-run the same shared core.
+</figcaption>
+</figure>
+
+<h3 id="flow">End-to-end flow</h3>
+<p>This diagram follows one chat message from the user to the reply, then the user's feedback on it, then the end-of-session pass. Solid arrows are calls and dashed arrows are returns. The numbers on the left give the order.</p>
+<figure>
+<svg viewBox="0 0 1100 1090" role="img" aria-labelledby="seqTitle seqDesc">
+<title id="seqTitle">End-to-end flow</title>
+<desc id="seqDesc">Sequence of a chat turn, user feedback, and the end-of-session consolidation across the user, iPhone app, Edge Functions, shared core, LLM provider, Postgres and Langfuse.</desc>
+<defs><marker id="sq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headA"/></marker><marker id="sqr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="headB"/></marker></defs>
+<rect x="6" y="84" width="1088" height="606" rx="10" class="phone" opacity="0.55"/>
+<text x="1084" y="102" text-anchor="end" class="lbl muted">A. Chat turn (every message)</text>
+<rect x="6" y="700" width="1088" height="70" rx="10" class="obs" opacity="0.55"/>
+<text x="1084" y="718" text-anchor="end" class="lbl muted">B. Feedback</text>
+<rect x="6" y="780" width="1088" height="298" rx="10" class="edge" opacity="0.55"/>
+<text x="1084" y="798" text-anchor="end" class="lbl muted">C. End of session (30 min idle or New chat)</text>
+<rect x="32" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="100" y="35" text-anchor="middle" class="lbl">User</text>
+<line x1="100" y1="64" x2="100" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="177" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="245" y="35" text-anchor="middle" class="lbl">iPhone app</text>
+<text x="245" y="52" text-anchor="middle" class="small muted" style="font-size:10px">UI · SQLite · outbox</text>
+<line x1="245" y1="64" x2="245" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="332" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="400" y="35" text-anchor="middle" class="lbl">Edge Functions</text>
+<text x="400" y="52" text-anchor="middle" class="small muted" style="font-size:10px">chat · consolidate · feedback</text>
+<line x1="400" y1="64" x2="400" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="492" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="560" y="35" text-anchor="middle" class="lbl">Shared core</text>
+<text x="560" y="52" text-anchor="middle" class="small muted" style="font-size:10px">runTurn · AI SDK · tools</text>
+<line x1="560" y1="64" x2="560" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="652" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="720" y="35" text-anchor="middle" class="lbl">LLM provider</text>
+<text x="720" y="52" text-anchor="middle" class="small muted" style="font-size:10px">Anthropic / OpenAI</text>
+<line x1="720" y1="64" x2="720" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="807" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="875" y="35" text-anchor="middle" class="lbl">Postgres</text>
+<text x="875" y="52" text-anchor="middle" class="small muted" style="font-size:10px">RLS</text>
+<line x1="875" y1="64" x2="875" y2="1082" stroke="currentColor" class="lifeline"/>
+<rect x="962" y="14" width="136" height="50" rx="8" class="inner"/>
+<text x="1030" y="35" text-anchor="middle" class="lbl">Langfuse</text>
+<text x="1030" y="52" text-anchor="middle" class="small muted" style="font-size:10px">traces · scores</text>
+<line x1="1030" y1="64" x2="1030" y2="1082" stroke="currentColor" class="lifeline"/>
+<path d="M104 122 L 241 122" class="arrow" marker-end="url(#sq)"/>
+<text x="116" y="116" class="small halo">types a message</text>
+<circle cx="26" cy="122" r="9" class="pill"/><text x="26" y="126" text-anchor="middle" class="pilltext">1</text>
+<path d="M249 144 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
+<text x="277" y="156" class="small halo">session check · buildChatRequest: last 20 msgs, memories (priority cap), episodes, 4-week summary</text>
+<circle cx="26" cy="150" r="9" class="pill"/><text x="26" y="154" text-anchor="middle" class="pilltext">2</text>
+<path d="M249 196 L 396 196" class="arrow" marker-end="url(#sq)"/>
+<text x="261" y="190" class="small halo">coach-chat (user JWT): sessionId, messages, context</text>
+<circle cx="26" cy="196" r="9" class="pill"/><text x="26" y="200" text-anchor="middle" class="pilltext">3</text>
+<path d="M404 228 L 871 228" class="arrow" marker-end="url(#sq)"/>
+<text x="416" y="222" class="small halo">read consent (RLS)</text>
+<circle cx="26" cy="228" r="9" class="pill"/><text x="26" y="232" text-anchor="middle" class="pilltext">4</text>
+<path d="M871 254 L 404 254" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="416" y="248" class="small halo">coachingEnabled ✓</text>
+<circle cx="26" cy="254" r="9" class="pill"/><text x="26" y="258" text-anchor="middle" class="pilltext">5</text>
+<path d="M404 286 L 556 286" class="arrow" marker-end="url(#sq)"/>
+<text x="416" y="280" class="small halo">runTurn({kind: user_message})</text>
+<circle cx="26" cy="286" r="9" class="pill"/><text x="26" y="290" text-anchor="middle" class="pilltext">6</text>
+<path d="M564 318 L 716 318" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="312" class="small halo">generateText + tools</text>
+<circle cx="26" cy="318" r="9" class="pill"/><text x="26" y="322" text-anchor="middle" class="pilltext">7</text>
+<path d="M716 350 L 564 350" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="576" y="344" class="small halo">tool call: get_exercise_history</text>
+<circle cx="26" cy="350" r="9" class="pill"/><text x="26" y="354" text-anchor="middle" class="pilltext">8</text>
+<path d="M564 382 L 871 382" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="376" class="small halo">completed sets query (RLS, caller rows only)</text>
+<circle cx="26" cy="382" r="9" class="pill"/><text x="26" y="386" text-anchor="middle" class="pilltext">9</text>
+<path d="M871 408 L 564 408" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="576" y="402" class="small halo">rows → tool result</text>
+<circle cx="26" cy="408" r="9" class="pill"/><text x="26" y="412" text-anchor="middle" class="pilltext">10</text>
+<path d="M564 436 L 716 436" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="430" class="small halo">tool result</text>
+<circle cx="26" cy="436" r="9" class="pill"/><text x="26" y="440" text-anchor="middle" class="pilltext">11</text>
+<path d="M716 468 L 564 468" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="576" y="462" class="small halo">tool call: save_memory → op collected only</text>
+<circle cx="26" cy="468" r="9" class="pill"/><text x="26" y="472" text-anchor="middle" class="pilltext">12</text>
+<path d="M716 500 L 564 500" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="576" y="494" class="small halo">final reply text</text>
+<circle cx="26" cy="500" r="9" class="pill"/><text x="26" y="504" text-anchor="middle" class="pilltext">13</text>
+<path d="M564 532 L 1026 532" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="526" class="small halo">trace + flush: sessionId, userId, tokens, cost, spans</text>
+<circle cx="26" cy="532" r="9" class="pill"/><text x="26" y="536" text-anchor="middle" class="pilltext">14</text>
+<path d="M556 566 L 249 566" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="261" y="560" class="small halo">{ reply, memoryOps, threadOps, traceId }</text>
+<circle cx="26" cy="566" r="9" class="pill"/><text x="26" y="570" text-anchor="middle" class="pilltext">15</text>
+<path d="M249 588 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
+<text x="277" y="600" class="small halo">one SQLite txn: messages + memory ops + outbox</text>
+<circle cx="26" cy="594" r="9" class="pill"/><text x="26" y="598" text-anchor="middle" class="pilltext">16</text>
+<path d="M241 632 L 104 632" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="116" y="626" class="small halo">reply + “Saved: … · Undo” chip</text>
+<circle cx="26" cy="632" r="9" class="pill"/><text x="26" y="636" text-anchor="middle" class="pilltext">17</text>
+<path d="M249 666 L 871 666" class="arrow" marker-end="url(#sq)"/>
+<text x="261" y="660" class="small halo">outbox sync → coach_memories (LWW)</text>
+<circle cx="26" cy="666" r="9" class="pill"/><text x="26" y="670" text-anchor="middle" class="pilltext">18</text>
+<path d="M104 728 L 241 728" class="arrow" marker-end="url(#sq)"/>
+<text x="116" y="722" class="small halo">👍 / 👎 on a reply</text>
+<circle cx="26" cy="728" r="9" class="pill"/><text x="26" y="732" text-anchor="middle" class="pilltext">19</text>
+<path d="M249 756 L 1026 756" class="arrow" marker-end="url(#sq)"/>
+<text x="261" y="750" class="small halo">coach-chat-feedback → score user_feedback on traceId</text>
+<circle cx="26" cy="756" r="9" class="pill"/><text x="26" y="760" text-anchor="middle" class="pilltext">20</text>
+<path d="M249 802 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
+<text x="277" y="814" class="small halo">session ended · not yet consolidated (idempotent check)</text>
+<circle cx="26" cy="808" r="9" class="pill"/><text x="26" y="812" text-anchor="middle" class="pilltext">21</text>
+<path d="M249 852 L 396 852" class="arrow" marker-end="url(#sq)"/>
+<text x="261" y="846" class="small halo">coach-chat-consolidate: messages, memories, episode index</text>
+<circle cx="26" cy="852" r="9" class="pill"/><text x="26" y="856" text-anchor="middle" class="pilltext">22</text>
+<path d="M404 884 L 556 884" class="arrow" marker-end="url(#sq)"/>
+<text x="416" y="878" class="small halo">consolidateSession (cheaper model)</text>
+<circle cx="26" cy="884" r="9" class="pill"/><text x="26" y="888" text-anchor="middle" class="pilltext">23</text>
+<path d="M564 914 L 716 914" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="908" class="small halo">summarize + catch missed facts + tidy memories</text>
+<circle cx="26" cy="914" r="9" class="pill"/><text x="26" y="918" text-anchor="middle" class="pilltext">24</text>
+<path d="M716 942 L 564 942" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="576" y="936" class="small halo">write_session_summary · memory ops</text>
+<circle cx="26" cy="942" r="9" class="pill"/><text x="26" y="946" text-anchor="middle" class="pilltext">25</text>
+<path d="M564 970 L 1026 970" class="arrow" marker-end="url(#sq)"/>
+<text x="576" y="964" class="small halo">trace tagged consolidation (same sessionId)</text>
+<circle cx="26" cy="970" r="9" class="pill"/><text x="26" y="974" text-anchor="middle" class="pilltext">26</text>
+<path d="M556 1000 L 249 1000" class="arrow alt dashret" marker-end="url(#sqr)"/>
+<text x="261" y="994" class="small halo">{ summary, memoryOps, threadOps, traceId }</text>
+<circle cx="26" cy="1000" r="9" class="pill"/><text x="26" y="1004" text-anchor="middle" class="pilltext">27</text>
+<path d="M249 1020 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
+<text x="277" y="1032" class="small halo">apply txn · consolidated_at · “Coach learned N things” banner</text>
+<circle cx="26" cy="1026" r="9" class="pill"/><text x="26" y="1030" text-anchor="middle" class="pilltext">28</text>
+<path d="M249 1064 L 871 1064" class="arrow" marker-end="url(#sq)"/>
+<text x="261" y="1058" class="small halo">outbox sync → coach_session_summaries + coach_memories</text>
+<circle cx="26" cy="1064" r="9" class="pill"/><text x="26" y="1068" text-anchor="middle" class="pilltext">29</text>
+</svg>
+<figcaption>
+  <strong>A. Chat turn.</strong> The app builds the request from local data (1–2) and calls <code>coach-chat</code> with the user's JWT (3). The function checks consent under RLS (4–5) and runs the shared core (6). The model may call tools: <code>get_exercise_history</code> reads synced workouts under RLS (8–11), and memory tools only <em>collect</em> ops (12). After the final reply (13), the trace is sent and flushed to Langfuse (14). The app gets the reply and ops (15), applies them in one SQLite transaction with the outbox (16), shows the reply with an Undo chip (17), and syncs the memories to Postgres later (18). If the network is down, step 18 waits in the outbox, and steps 1–17 need a connection.<br>
+  <strong>B. Feedback.</strong> A 👍 or 👎 (19) becomes a <code>user_feedback</code> score on that turn's trace (20). The feedback function checks that the trace belongs to the caller.<br>
+  <strong>C. End of session.</strong> After 30 minutes idle or New chat, the app's idempotent check (21) calls <code>coach-chat-consolidate</code> (22–23). A cheaper model writes the episodic summary and open threads, catches missed facts, and tidies memories (24–25). This is traced as <code>consolidation</code> under the same session (26). The app applies the result and shows the "Coach learned N things" banner (27–28), then syncs summaries and memories (29). A failed or offline attempt is retried on the next trigger, at most 3 times.
 </figcaption>
 </figure>
 
