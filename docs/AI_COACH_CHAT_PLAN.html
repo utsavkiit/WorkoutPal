@@ -63,7 +63,7 @@
 <main>
 
 <h1>AI Coach chat with memory: implementation plan</h1>
-<p class="meta">WorkoutPal · Branch <code>feature/coach-chat</code> (based on <code>feature/ai-coach</code>) · Status: <strong>approved plan, not yet implemented</strong> · Written November 27, 2026</p>
+<p class="meta">WorkoutPal · Branch <code>feature/coach-chat</code> (based on <code>feature/ai-coach</code>) · Status: <strong>approved plan, not yet implemented</strong> · Written November 27, 2026 · Updated November 28, 2026: chat history syncs to Supabase, the reply is saved server-side, and the end-of-session pass is atomic</p>
 
 <div class="callout">
   <strong>For agents picking this up:</strong> follow <code>AGENTS.md</code> and the Kanban workflow. Work the tasks in <a href="#tasks">Implementation tasks</a> in order, starting with the <strong>CC-001 spike</strong>; its results decide two fallbacks. Keep the invariants in <a href="#invariants">Non-negotiable invariants</a>. Record progress and the exact next action in the Kanban Handoff.
@@ -104,12 +104,13 @@
   <tr><td>Where the AI is called</td><td>Supabase Edge Functions, so the API keys stay on the server. The functions use the <strong>caller's JWT</strong>, so no service-role key is needed.</td></tr>
   <tr><td>Memory writes</td><td>The AI saves memories automatically through tools. The <strong>app</strong> applies the resulting memory ops to SQLite and the outbox. The user can review, edit, undo and delete them.</td></tr>
   <tr><td>Workout context</td><td>A compact summary of the last 4 weeks, plus a <code>get_exercise_history</code> lookup tool that reads synced data through RLS.</td></tr>
+  <tr><td>Chat history</td><td><strong>Synced.</strong> All messages and sessions are kept in Supabase as well as SQLite, so past chats survive an uninstall and appear on a new phone. The model still receives only the current session's last 20 messages.</td></tr>
   <tr><td>Memory model</td><td>Three layers: short-term (session messages), long-term facts (<code>coach_memories</code>) and episodic (<code>coach_session_summaries</code> with open threads).</td></tr>
   <tr><td>Upkeep</td><td>No daily job. The end-of-session pass tidies the whole memory set. Time-bound facts use <code>reviewAfter</code> and <code>followUpAfter</code> dates, so the coach checks in instead of deleting.</td></tr>
   <tr><td>Observability</td><td><strong>Langfuse Cloud</strong> (free Hobby tier) holds traces, sessions, feedback scores, datasets and experiments. Every turn is logged, always on in v1.</td></tr>
   <tr><td>Sessions</td><td>A new session starts after 30 minutes idle or when the user taps <strong>New chat</strong>.</td></tr>
   <tr><td>Proactive coaching</td><td>Not in v1. The hooks are built now (see <a href="#proactive">§14</a>).</td></tr>
-  <tr><td>Lost in-flight reply</td><td>Accepted for v1. If the app is killed mid-request, that turn is lost. The trace still exists.</td></tr>
+  <tr><td>Lost in-flight reply</td><td><strong>Recovered.</strong> The user's message is saved locally before sending, and <code>coach-chat</code> upserts the user message and the reply (with the client-generated <code>replyId</code>) to Postgres before returning. If the app is killed mid-request, the next sync pulls the reply down. That turn's memory ops are still lost; the end-of-session pass can recover them from the saved text.</td></tr>
 </table>
 
 <h2 id="architecture">2. Architecture</h2>
@@ -145,8 +146,8 @@
   <text x="50" y="318" class="lbl">SQLite (source of truth)</text>
   <text x="50" y="337" class="small">coach_memories <tspan class="muted">synced</tspan></text>
   <text x="50" y="354" class="small">coach_session_summaries <tspan class="muted">synced</tspan></text>
-  <text x="50" y="371" class="small">coach_chat_messages <tspan class="muted">local only</tspan></text>
-  <text x="50" y="388" class="small">coach_chat_sessions <tspan class="muted">local only</tspan></text>
+  <text x="50" y="371" class="small">coach_chat_messages <tspan class="muted">synced</tspan></text>
+  <text x="50" y="388" class="small">coach_chat_sessions <tspan class="muted">synced</tspan></text>
   <text x="50" y="405" class="small">coaching_profiles, workouts … <tspan class="muted">existing</tspan></text>
   <text x="50" y="430" class="small muted">applyCoachMemoryOps: 1 txn + enqueue</text>
 
@@ -187,12 +188,13 @@
   <text x="440" y="333" class="small muted">write_session_summary (consolidation only)</text>
   <text x="440" y="355" class="small muted">Memory/thread tools only record ops → returned</text>
   <text x="440" y="369" class="small muted">to the app; the function never writes memories.</text>
+  <text x="440" y="383" class="small muted">coach-chat upserts the turn's two messages.</text>
 
   <!-- Postgres -->
   <rect x="410" y="430" width="370" height="190" rx="16" class="box db"/>
   <text x="430" y="456" class="title">Supabase Postgres (RLS: owner_id = auth.uid())</text>
-  <text x="430" y="480" class="small">coach_memories <tspan class="muted">new</tspan></text>
-  <text x="430" y="498" class="small">coach_session_summaries <tspan class="muted">new</tspan></text>
+  <text x="430" y="480" class="small">coach_memories · coach_session_summaries <tspan class="muted">new</tspan></text>
+  <text x="430" y="498" class="small">coach_chat_messages · coach_chat_sessions <tspan class="muted">new</tspan></text>
   <text x="430" y="516" class="small">coaching_profiles <tspan class="muted">consent check</tspan></text>
   <text x="430" y="534" class="small">workout_sessions / workout_exercises / workout_sets</text>
   <text x="430" y="552" class="small muted">  ← get_exercise_history (completed sets only)</text>
@@ -307,10 +309,10 @@
 <text x="116" y="116" class="small halo">types a message</text>
 <circle cx="26" cy="122" r="9" class="pill"/><text x="26" y="126" text-anchor="middle" class="pilltext">1</text>
 <path d="M249 144 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
-<text x="277" y="156" class="small halo">session check · buildChatRequest: last 20 msgs, memories (priority cap), episodes, 4-week summary</text>
+<text x="277" y="156" class="small halo">save user msg + replyId · session check · buildChatRequest: last 20 msgs, memories, episodes, 4-week summary</text>
 <circle cx="26" cy="150" r="9" class="pill"/><text x="26" y="154" text-anchor="middle" class="pilltext">2</text>
 <path d="M249 196 L 396 196" class="arrow" marker-end="url(#sq)"/>
-<text x="261" y="190" class="small halo">coach-chat (user JWT): sessionId, messages, context</text>
+<text x="261" y="190" class="small halo">coach-chat (user JWT): sessionId, replyId, messages, context</text>
 <circle cx="26" cy="196" r="9" class="pill"/><text x="26" y="200" text-anchor="middle" class="pilltext">3</text>
 <path d="M404 228 L 871 228" class="arrow" marker-end="url(#sq)"/>
 <text x="416" y="222" class="small halo">read consent (RLS)</text>
@@ -346,16 +348,16 @@
 <text x="576" y="526" class="small halo">trace + flush: sessionId, userId, tokens, cost, spans</text>
 <circle cx="26" cy="532" r="9" class="pill"/><text x="26" y="536" text-anchor="middle" class="pilltext">14</text>
 <path d="M556 566 L 249 566" class="arrow alt dashret" marker-end="url(#sqr)"/>
-<text x="261" y="560" class="small halo">{ reply, memoryOps, threadOps, traceId }</text>
+<text x="261" y="560" class="small halo">{ reply, ops, traceId } · messages already upserted</text>
 <circle cx="26" cy="566" r="9" class="pill"/><text x="26" y="570" text-anchor="middle" class="pilltext">15</text>
 <path d="M249 588 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
-<text x="277" y="600" class="small halo">one SQLite txn: messages + memory ops + outbox</text>
+<text x="277" y="600" class="small halo">one SQLite txn: reply + memory ops + outbox</text>
 <circle cx="26" cy="594" r="9" class="pill"/><text x="26" y="598" text-anchor="middle" class="pilltext">16</text>
 <path d="M241 632 L 104 632" class="arrow alt dashret" marker-end="url(#sqr)"/>
 <text x="116" y="626" class="small halo">reply + “Saved: … · Undo” chip</text>
 <circle cx="26" cy="632" r="9" class="pill"/><text x="26" y="636" text-anchor="middle" class="pilltext">17</text>
 <path d="M249 666 L 871 666" class="arrow" marker-end="url(#sq)"/>
-<text x="261" y="660" class="small halo">outbox sync → coach_memories (LWW)</text>
+<text x="261" y="660" class="small halo">outbox sync → coach_memories + chat messages (LWW)</text>
 <circle cx="26" cy="666" r="9" class="pill"/><text x="26" y="670" text-anchor="middle" class="pilltext">18</text>
 <path d="M104 728 L 241 728" class="arrow" marker-end="url(#sq)"/>
 <text x="116" y="722" class="small halo">👍 / 👎 on a reply</text>
@@ -385,35 +387,36 @@
 <text x="261" y="994" class="small halo">{ summary, memoryOps, threadOps, traceId }</text>
 <circle cx="26" cy="1000" r="9" class="pill"/><text x="26" y="1004" text-anchor="middle" class="pilltext">27</text>
 <path d="M249 1020 h 22 v 22 h -18" class="arrow" marker-end="url(#sq)"/>
-<text x="277" y="1032" class="small halo">apply txn · consolidated_at · “Coach learned N things” banner</text>
+<text x="277" y="1032" class="small halo">one txn: ops + summary + consolidated_at · “Coach learned N things” banner</text>
 <circle cx="26" cy="1026" r="9" class="pill"/><text x="26" y="1030" text-anchor="middle" class="pilltext">28</text>
 <path d="M249 1064 L 871 1064" class="arrow" marker-end="url(#sq)"/>
-<text x="261" y="1058" class="small halo">outbox sync → coach_session_summaries + coach_memories</text>
+<text x="261" y="1058" class="small halo">outbox sync → summaries + memories + session</text>
 <circle cx="26" cy="1064" r="9" class="pill"/><text x="26" y="1068" text-anchor="middle" class="pilltext">29</text>
 </svg>
 <figcaption>
-  <strong>A. Chat turn.</strong> The app builds the request from local data (1–2) and calls <code>coach-chat</code> with the user's JWT (3). The function checks consent under RLS (4–5) and runs the shared core (6). The model may call tools: <code>get_exercise_history</code> reads synced workouts under RLS (8–11), and memory tools only <em>collect</em> ops (12). After the final reply (13), the trace is sent and flushed to Langfuse (14). The app gets the reply and ops (15), applies them in one SQLite transaction with the outbox (16), shows the reply with an Undo chip (17), and syncs the memories to Postgres later (18). If the network is down, step 18 waits in the outbox, and steps 1–17 need a connection.<br>
+  <strong>A. Chat turn.</strong> The app saves the user's message and a client-generated <code>replyId</code>, then builds the request from local data (1–2) and calls <code>coach-chat</code> with the user's JWT (3). The function checks consent under RLS (4–5) and runs the shared core (6). The model may call tools: <code>get_exercise_history</code> reads synced workouts under RLS (8–11), and memory tools only <em>collect</em> ops (12). After the final reply (13), the trace is sent and flushed to Langfuse (14), and the function upserts the user message and the reply to <code>coach_chat_messages</code> under RLS. The app gets the reply and ops (15), applies them in one SQLite transaction with the outbox (16), shows the reply with an Undo chip (17), and syncs the memories and messages to Postgres later (18). If the network is down, step 18 waits in the outbox, and steps 1–17 need a connection. If the app is killed between 3 and 16, the next sync pulls the reply from Postgres; its memory ops are lost.<br>
   <strong>B. Feedback.</strong> A 👍 or 👎 (19) becomes a <code>user_feedback</code> score on that turn's trace (20). The feedback function checks that the trace belongs to the caller.<br>
-  <strong>C. End of session.</strong> After 30 minutes idle or New chat, the app's idempotent check (21) calls <code>coach-chat-consolidate</code> (22–23). A cheaper model writes the episodic summary and open threads, catches missed facts, and tidies memories (24–25). This is traced as <code>consolidation</code> under the same session (26). The app applies the result and shows the "Coach learned N things" banner (27–28), then syncs summaries and memories (29). A failed or offline attempt is retried on the next trigger, at most 3 times.
+  <strong>C. End of session.</strong> After 30 minutes idle or New chat, the app's idempotent check (21) calls <code>coach-chat-consolidate</code> (22–23). A cheaper model writes the episodic summary and open threads, catches missed facts, and tidies memories (24–25). This is traced as <code>consolidation</code> under the same session (26). The app applies the ops, the summary and <code>consolidated_at</code> in one SQLite transaction and shows the "Coach learned N things" banner (27–28), then syncs summaries, memories and the session row (29). A failed or offline attempt is retried on the next trigger, at most 3 times.
 </figcaption>
 </figure>
 
 <h2 id="invariants">3. Non-negotiable invariants</h2>
 <ul>
-  <li><strong>Local-first:</strong> UI writes never wait for Supabase. Memories and summaries are written to SQLite first, then the outbox. Chat needs a network connection; nothing else in this feature does.</li>
-  <li><strong>Single write path:</strong> the Edge Functions never write memories or summaries. They return ops, and the app applies them through <code>applyCoachMemoryOps</code> and its episode equivalent.</li>
+  <li><strong>Local-first:</strong> UI writes never wait for Supabase. Memories, summaries and chat messages are written to SQLite first, then the outbox. The user's message is saved before <code>coach-chat</code> is called. Chat needs a network connection; nothing else in this feature does, and past chats stay readable offline.</li>
+  <li><strong>Single write path:</strong> the Edge Functions never write memories or summaries. They return ops, and the app applies them through <code>applyCoachMemoryOps</code> and its episode equivalent. The one exception: <code>coach-chat</code> upserts the turn's user message and reply by their client-generated ids, so writing them twice is harmless.</li>
   <li><strong>No service-role key</strong> in the chat functions. Use a client scoped to the user's <code>Authorization</code> header, so RLS enforces ownership.</li>
-  <li><strong>Consent:</strong> the functions require <code>consent.coachingEnabled</code>. Workout data and <code>get_exercise_history</code> are only included when <code>consent.shareWorkoutHistory</code> is true. <code>deleteCoachingData()</code> also wipes memories, summaries, chat messages and sessions.</li>
+  <li><strong>Consent:</strong> the functions require <code>consent.coachingEnabled</code>. Workout data and <code>get_exercise_history</code> are only included when <code>consent.shareWorkoutHistory</code> is true. <code>deleteCoachingData()</code> also wipes memories, summaries, chat messages and sessions, locally <em>and</em> in Supabase.</li>
   <li><strong>Untrusted text:</strong> memories, summaries, routine names and messages are data, not instructions. Prompts must say so, and the prompt-injection evals enforce it.</li>
   <li><strong>No medical advice:</strong> the coach doesn't diagnose and suggests a professional for injuries. This matches the PRD's out-of-scope list.</li>
   <li><strong>Never expire silently:</strong> stale facts trigger a check-in. Every automated change is visible and can be undone.</li>
+  <li><strong>Atomic applies:</strong> a reply with its memory ops, and an end-of-session result (ops, summary, thread ops and <code>consolidated_at</code>), are each applied in one SQLite transaction with their outbox entries. A kill mid-apply leaves nothing half-applied, and a retry never re-applies ops.</li>
   <li>Serialize SQLite access: no overlapping transactions. Use client-generated UUIDs and keep RLS enabled.</li>
 </ul>
 
 <h2 id="memory">4. Memory layers and lifecycle</h2>
 <table>
   <tr><th>Layer</th><th>Storage</th><th>What the model receives</th></tr>
-  <tr><td>Short-term</td><td>Current session's messages in <code>coach_chat_messages</code> (local only)</td><td>The last 20 messages, about 24k characters</td></tr>
+  <tr><td>Short-term</td><td>Current session's messages in <code>coach_chat_messages</code>. All history is synced so it can be shown later, but only the current session feeds the model.</td><td>The last 20 messages, about 24k characters</td></tr>
   <tr><td>Long-term facts</td><td><code>coach_memories</code> (synced)</td><td>All active memories up to a priority cap (≈150 items or 12k characters). When some are omitted, the model also gets the <code>search_memories</code> tool.</td></tr>
   <tr><td>Episodic</td><td><code>coach_session_summaries</code> (synced), plus workouts and weekly reviews</td><td>The last 3 summaries, open threads under 30 days old, and the <code>search_past_conversations</code> and <code>get_exercise_history</code> tools</td></tr>
 </table>
@@ -430,7 +433,7 @@
   <text x="36" y="80" class="small">Session messages</text>
   <text x="36" y="98" class="small muted">30 min idle or New chat</text>
   <text x="36" y="114" class="small muted">ends the session</text>
-  <text x="36" y="140" class="small muted">phone only</text>
+  <text x="36" y="140" class="small muted">history synced; model sees session</text>
 
   <rect x="400" y="20" width="300" height="110" rx="12" class="box edge"/>
   <text x="416" y="46" class="title">In-turn (every reply)</text>
@@ -514,31 +517,40 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
   id: string; sessionId: string; role: 'user'|'assistant';
   origin: 'user'|'coach'; trigger: string|null;          // proactive hooks
   text: string; createdAt: string; traceId: string|null; memoryOpIds: string[];
+  sendStatus: 'pending'|'sent'|'failed'|null;            // user messages only; local display state
 }</code></pre>
 <ul>
   <li><code>currentSessionId(lastMessage, now)</code> starts a new session after 30 minutes idle. <strong>New chat</strong> forces a new session.</li>
   <li><code>buildChatRequest(...)</code> trims to the last 20 session messages (about 24k characters) and builds a compact summary from <code>CoachingContextV1</code>, with workout data omitted unless <code>shareWorkoutHistory</code> is true. It adds the selected memories and episodes.</li>
   <li><code>validateChatResponse</code> checks the shape returned by the Edge Functions.</li>
+  <li>The user's message is saved with <code>sendStatus: 'pending'</code> and a <code>replyId</code> is generated before the request. On relaunch, a pending message whose reply has arrived by sync becomes <code>sent</code>; otherwise it becomes <code>failed</code> and shows Retry, which reuses the same <code>replyId</code>.</li>
 </ul>
 
 <h2 id="persistence">7. Persistence, sync and Supabase</h2>
 <ul>
   <li><strong>SQLite</strong> (<code>src/data/database.ts</code>, following the branch's coach-table conventions):
     <ul>
-      <li>Tables: <code>coach_memories</code> and <code>coach_session_summaries</code> (synced), <code>coach_chat_messages</code> and <code>coach_chat_sessions(id, started_at, last_message_at, consolidated_at, consolidation_attempts, consolidation_error)</code> (local only).</li>
-      <li>Functions: <code>listCoachMemories</code>, <code>saveCoachMemory</code>, <code>deleteCoachMemory</code>, <code>applyCoachMemoryOps(ops, traceId)</code> (one transaction plus <code>enqueueWithDatabase</code>), <code>listSessionSummaries</code>, <code>saveSessionSummary</code>, <code>applyThreadOps</code>, <code>listChatMessages</code>, <code>appendChatMessage</code>, <code>clearChatHistory</code>.</li>
+      <li>Tables: <code>coach_memories</code> and <code>coach_session_summaries</code> (synced), <code>coach_chat_messages</code> and <code>coach_chat_sessions(id, started_at, last_message_at, consolidated_at, consolidation_attempts, consolidation_error)</code> (also synced; the attempt and error columns stay local).</li>
+      <li>Functions: <code>listCoachMemories</code>, <code>saveCoachMemory</code>, <code>deleteCoachMemory</code>, <code>applyCoachMemoryOps(ops, traceId)</code> (one transaction plus <code>enqueueWithDatabase</code>), <code>listSessionSummaries</code>, <code>saveSessionSummary</code>, <code>applyThreadOps</code>, <code>listChatMessages(before?, limit)</code> (paged), <code>appendChatMessage</code> (with outbox), <code>clearChatHistory</code> (local delete plus a queued remote delete), <code>applyConsolidation</code> (one transaction).</li>
       <li>Also extend <code>attachLocalOwner</code> and <code>deleteCoachingData()</code>.</li>
     </ul>
   </li>
   <li><strong>Sync</strong> (<code>src/data/sync.ts</code>): push branches for <code>coach_memory</code> and <code>coach_session_summary</code> upserts and deletes. On pull, add both to <code>Promise.all</code> and to the <code>mergeRemoteData</code> bundle, merging with last-write-wins on <code>updated_at</code>.</li>
+  <li><strong>Chat history sync:</strong>
+    <ul>
+      <li>Push <code>coach_chat_message</code> and <code>coach_chat_session</code> upserts, plus a <code>coach_chat_history_clear</code> op. Messages are append-only, so upserts by id never conflict. Sessions merge last-write-wins, with a set <code>consolidated_at</code> never cleared by an older row.</li>
+      <li>Pull messages incrementally with a <code>created_at</code> cursor instead of in the full bundle. On a fresh install or a new phone, pull the most recent 90 days or 500 messages, whichever is smaller.</li>
+      <li>Older pages load from Supabase when the user scrolls past the local cache and is online, and are stored locally once fetched.</li>
+    </ul>
+  </li>
   <li><strong>Migration</strong> <code>supabase/migrations/2026112xxxxxxx_coach_chat_memory.sql</code>:
     <ul>
-      <li>Creates both tables with <code>owner_id</code> and jsonb payload checks, and enables RLS.</li>
+      <li>Creates four tables (<code>coach_memories</code>, <code>coach_session_summaries</code>, <code>coach_chat_messages</code>, <code>coach_chat_sessions</code>) with <code>owner_id</code> and jsonb payload checks, and enables RLS. Messages carry <code>session_id</code> without a foreign key, plus an <code>(owner_id, created_at)</code> index for paging.</li>
       <li>Adds four own-row policies in the <code>(select auth.uid()) = owner_id</code> style of <code>20260913040648_ai_coach_profiles.sql</code>, plus explicit grants.</li>
       <li>Apply it with <code>npx supabase db query --linked --file …</code>.</li>
     </ul>
   </li>
-  <li><strong>RLS tests:</strong> add both tables to the cross-user isolation checks in <code>supabase/tests/rls.sql</code>.</li>
+  <li><strong>RLS tests:</strong> add all four tables to the cross-user isolation checks in <code>supabase/tests/rls.sql</code>.</li>
   <li><strong>Secrets:</strong> <code>LLM_PROVIDER</code>, <code>LLM_MODEL</code>, <code>LLM_CONSOLIDATE_MODEL</code>, <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code>, <code>LANGFUSE_PUBLIC_KEY</code>, <code>LANGFUSE_SECRET_KEY</code>, <code>LANGFUSE_BASE_URL</code>.</li>
 </ul>
 
@@ -599,7 +611,8 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
     <ol>
       <li>Accepts POST only, with a body of at most 64 KB.</li>
       <li>Creates a user-scoped client and requires <code>coachingEnabled</code>, otherwise returns 403.</li>
-      <li>Validates and caps the input, then runs <code>runTurn</code>.</li>
+      <li>Validates and caps the input (including a UUID <code>replyId</code>), then runs <code>runTurn</code>.</li>
+      <li>Upserts the user message and the reply (id = <code>replyId</code>, with <code>traceId</code>) into <code>coach_chat_messages</code> using the user-scoped client. A failed upsert is traced but doesn't fail the turn, because the app still saves both.</li>
       <li>Flushes Langfuse and returns <code>{reply, memoryOps, threadOps, traceId}</code>.</li>
     </ol>
     <p>Errors are traced and returned as <code>{error}</code> with a 4xx or 5xx status.</p>
@@ -614,13 +627,13 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
   <li><strong>At the end of a session</strong> (30 minutes idle or New chat). The app checks idempotently when the Coach tab opens, when the app returns to the foreground, and before a new session starts.
     <ul>
       <li>Sessions with fewer than 2 user messages are skipped.</li>
-      <li>The app applies the ops and summary, sets <code>consolidated_at</code>, and shows the banner "Coach learned / tidied N things · Review".</li>
+      <li>The app applies the ops, summary and thread ops and sets <code>consolidated_at</code> in <strong>one SQLite transaction</strong> with the outbox, then shows the banner "Coach learned / tidied N things · Review".</li>
       <li>Offline or failed attempts are retried on the next trigger. After 3 attempts the session is marked failed and not retried.</li>
     </ul>
   </li>
   <li><strong>Manual edits</strong> in the Memories screen are written locally right away and sync the same way.</li>
   <li><strong>Weekly reviews</strong> read the active memories when the review is requested.</li>
-  <li><strong>Accepted gap:</strong> a reply lost in flight (app killed or network dropped) is not recovered. The trace remains, and the end-of-session pass may pick up the fact later.</li>
+  <li><strong>Lost in-flight reply:</strong> if the app is killed or the network drops after the function finished, the reply arrives on the next sync. Its memory ops are not recovered; the end-of-session pass may pick up the fact from the saved text. If the function never finished, the pending message shows Retry.</li>
 </ol>
 
 <h2 id="observability">11. Tracing, replay and evals</h2>
@@ -679,13 +692,14 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
       <li>A memory chip under a reply ("Saved: … · Undo"), and 👍/👎 on assistant messages.</li>
       <li>The "Coach learned N things · Review" banner.</li>
       <li>Retry on a failed send. Offline, the composer is disabled with an explanation and history stays readable.</li>
+      <li>All past sessions in one inverted <code>FlatList</code>, paged from SQLite. Past the local cache it fetches older pages when online, or shows "Older messages available when online."</li>
     </ul>
   </li>
   <li><strong><code>app/coach/memories.tsx</code></strong> ("What Coach knows"), which works fully offline:
     <ul>
       <li>Memories grouped by category, with edit, delete, add and <code>reviewAfter</code> editing.</li>
       <li>A <strong>Past conversations</strong> section listing summaries and their threads. Summaries can be deleted and threads resolved.</li>
-      <li>A "Clear chat history" action.</li>
+      <li>A "Clear chat history" action that deletes on the phone and in Supabase, plus a per-session delete.</li>
     </ul>
   </li>
   <li>Use <code>useTheme</code> with <code>StyleSheet.create</code>, and the <code>Card</code>, <code>PrimaryButton</code> and <code>EmptyState</code> components from <code>src/components/ui.tsx</code>. Add <code>testID</code>s for Detox, use large touch targets, and support VoiceOver labels.</li>
@@ -721,14 +735,14 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
   <tr><td>CC-002</td><td>Memory model</td><td><code>memory.ts</code> with validation, reducer, invert, due-for-review and priority selection, plus <code>memory.test.ts</code>.</td></tr>
   <tr><td>CC-003</td><td>Episode model</td><td><code>episodes.ts</code> with validation, selection, due threads and thread ops, plus tests.</td></tr>
   <tr><td>CC-004</td><td>Chat model</td><td><code>chat.ts</code> with sessions, request builder (consent gating, trimming) and response validation, plus tests. After CC-002 and CC-003.</td></tr>
-  <tr><td>CC-005</td><td>Local persistence</td><td>The four SQLite tables and functions. <code>deleteCoachingData</code> and <code>attachLocalOwner</code> extended. After CC-002 to CC-004.</td></tr>
-  <tr><td>CC-006</td><td>Supabase schema</td><td>Migration for the two synced tables with RLS and grants. <code>rls.sql</code> extended and passing on the linked project.</td></tr>
-  <tr><td>CC-007</td><td>Sync</td><td>Push, pull and merge for memories and summaries. They survive an offline edit, a restart, and a sync without being reverted. After CC-005 and CC-006.</td></tr>
+  <tr><td>CC-005</td><td>Local persistence</td><td>The four SQLite tables and functions. The user message is saved before sending. Reply plus ops, and the end-of-session result, each apply in one transaction. <code>deleteCoachingData</code> and <code>attachLocalOwner</code> extended. After CC-002 to CC-004.</td></tr>
+  <tr><td>CC-006</td><td>Supabase schema</td><td>Migration for the four synced tables with RLS, grants and the message paging index. <code>rls.sql</code> extended and passing on the linked project.</td></tr>
+  <tr><td>CC-007</td><td>Sync</td><td>Push, pull and merge for memories, summaries, messages and sessions. They survive an offline edit, a restart, and a sync without being reverted. Fresh install restores recent chat history; older pages load on scroll; clear deletes remotely. After CC-005 and CC-006.</td></tr>
   <tr><td>CC-008</td><td>Shared core</td><td>Model, context source, prompts, tools, history tool, <code>runTurn</code> and <code>consolidateSession</code>, with mock-model tests passing in <code>npm test</code>. After CC-001.</td></tr>
-  <tr><td>CC-009</td><td>Edge Functions</td><td>The three functions with Langfuse tracing and flush. Consent 403, input caps and feedback ownership check are verified locally with curl. After CC-008.</td></tr>
-  <tr><td>CC-010</td><td>Chat UI</td><td>Coach segmented control, CoachChat (chips, Undo, feedback, offline state, retry). After CC-005 and CC-009.</td></tr>
-  <tr><td>CC-011</td><td>End-of-session pass</td><td>Idempotent trigger, retries, the banner, and the summary saved and synced. After CC-007 and CC-009.</td></tr>
-  <tr><td>CC-012</td><td>Memories screen</td><td>Facts and Past conversations: view, edit, delete, add, resolve thread, clear history. Works offline. After CC-005.</td></tr>
+  <tr><td>CC-009</td><td>Edge Functions</td><td>The three functions with Langfuse tracing and flush. <code>coach-chat</code> upserts the turn's messages. Consent 403, input caps, idempotent message upsert and feedback ownership check are verified locally with curl. After CC-006 and CC-008.</td></tr>
+  <tr><td>CC-010</td><td>Chat UI</td><td>Coach segmented control, CoachChat (chips, Undo, feedback, offline state, retry, paged history across sessions). After CC-005, CC-007 and CC-009.</td></tr>
+  <tr><td>CC-011</td><td>End-of-session pass</td><td>Idempotent trigger, retries, the banner, and the summary saved and synced. A kill mid-apply leaves nothing applied, and the retry applies everything once. After CC-007 and CC-009.</td></tr>
+  <tr><td>CC-012</td><td>Memories screen</td><td>Facts and Past conversations: view, edit, delete, add, resolve thread, clear history (local and remote). Works offline. After CC-005 and CC-007.</td></tr>
   <tr><td>CC-013</td><td>Weekly review context</td><td>Memories (and episodes, if added) appear in <code>getCoachingContext</code>, and the <code>coaching-agent</code> contract is validated. After CC-005.</td></tr>
   <tr><td>CC-014</td><td>Replay</td><td><code>coach:replay</code> works for a single trace, a whole session (pinned and rolling) and a consolidation trace. After CC-009.</td></tr>
   <tr><td>CC-015</td><td>Evals</td><td>Seed cases, graders, dataset sync and the experiment runner. Baseline run recorded. After CC-008.</td></tr>
@@ -745,6 +759,7 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
       <li>"I hurt my left knee last month" produces a save op with category <code>injury</code>.</li>
       <li>"What did I bench in October?" triggers <code>get_exercise_history</code> and matches the synced data.</li>
       <li>A second user's JWT cannot see the first user's history.</li>
+      <li>After a turn, both messages are in <code>coach_chat_messages</code>. Sending the same <code>replyId</code> twice leaves one row.</li>
       <li>With 200 seeded memories, the request stays within budget, injuries are included, and <code>search_memories</code> finds an omitted memory.</li>
       <li>The trace appears in Langfuse with session, user, tokens and cost.</li>
       <li>A 👎 appears as a score on that trace.</li>
@@ -755,6 +770,7 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
     <ul>
       <li>Mention a fact in passing over 3 turns, then tap New chat. The consolidation trace appears, the banner shows, and a summary with threads is synced.</li>
       <li>Reopening the app does not rerun the pass for that session.</li>
+      <li>Kill the app between applying ops and setting <code>consolidated_at</code> (debug hook): on relaunch nothing is half-applied and the retry applies each op once.</li>
       <li>If the session ends while offline, the pass runs after reconnecting.</li>
     </ul>
   </li>
@@ -771,6 +787,9 @@ type ThreadOp = { type: 'resolve_thread'; summaryId: string; threadId: string };
     <ul>
       <li>A multi-turn chat. Memories and summaries sync, as seen in the Supabase tables.</li>
       <li>Offline, memories stay viewable and the composer is disabled.</li>
+      <li>Kill the app right after sending: on relaunch the reply appears after sync, with no duplicate.</li>
+      <li>Delete and reinstall, then sign in: recent chat history, memories and summaries return, and older messages load on scroll.</li>
+      <li>Clear chat history: the rows are gone from Supabase too.</li>
       <li>A weekly review includes the memories in its context.</li>
     </ul>
   </li>

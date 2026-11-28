@@ -41,7 +41,7 @@ Updated: November 25, 2026. Single-agent queue. The user has prioritized a gym-r
 
 Ordered by feature priority; dependencies constrain eligibility.
 
-- **WP-033 AI Coach chat with memory:** Conversational coach in the Coach tab that learns goals, preferences, injuries, and other facts as user-editable memories (long-term facts, episodic session summaries, short-term session context), traced and evaluated in Langfuse. Plan, architecture diagram, and CC-001–CC-017 task breakdown: [AI_COACH_CHAT_PLAN.html](AI_COACH_CHAT_PLAN.html). Start with the CC-001 spike; work on branch `feature/coach-chat`; after WP-032.
+- **WP-033 AI Coach chat with memory:** Conversational coach in the Coach tab that learns goals, preferences, injuries, and other facts as user-editable memories (long-term facts, episodic session summaries, short-term session context), with full chat history synced to Supabase, traced and evaluated in Langfuse. Plan, architecture diagram, and CC-001–CC-017 task breakdown: [AI_COACH_CHAT_PLAN.html](AI_COACH_CHAT_PLAN.html). Start with the CC-001 spike; work on branch `feature/coach-chat`; after WP-032.
 - **WP-002 Use last workout:** Explicit action fills only empty values, converts lb/kg numerically, handles bodyweight/missing history/set counts, and never completes sets; after WP-001.
 - **WP-004 Copy QA:** Verify offline/restart, unit conversion, and set matching; after WP-002, WP-003.
 - **WP-006 Exercise detail:** Dated sets, defined record values, simple trend chart, and first-workout/empty states; reachable from workout/history; after WP-005.
